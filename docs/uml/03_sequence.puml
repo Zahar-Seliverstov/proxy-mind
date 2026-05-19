@@ -1,0 +1,96 @@
+@startuml ProxyMind_Sequence
+title ProxyMind — Диаграмма последовательности\n(режим Auto Plan: полный цикл выполнения)
+
+skinparam defaultFontName Arial
+skinparam sequenceArrowThickness 1.5
+
+actor "Пользователь" as User
+participant "Vue 3\n(PaneWorkspace)" as FE
+participant "FastAPI\n(Backend :3000)" as BE
+participant "Ollama\n(LLM :11434)" as LLM
+participant "tmux\n(libtmux)" as TMX
+
+== Валидация промпта ==
+
+User -> FE: ввод промпта, выбор панели\nрежим Auto Plan, модель
+FE -> BE: POST /api/ai/validate {prompt}
+BE -> LLM: classify(prompt)
+LLM --> BE: {"status": "ok"}
+BE --> FE: 200 {status: "ok"}
+FE --> User: переход к диалогу вопросов
+
+== Диалог уточняющих вопросов ==
+
+FE -> BE: POST /api/ai/next-question\n{prompt, qa_history: []}
+BE -> LLM: next_question(prompt, history)
+LLM --> BE: {"text": "...?", "options": [...]}
+BE --> FE: вопрос с вариантами ответов
+FE --> User: ClarifyQuestions.vue
+
+User -> FE: выбор ответа на вопрос
+FE -> BE: POST /api/ai/next-question\n{prompt, qa_history: [{q, a}]}
+BE -> LLM: next_question(prompt, history)
+LLM --> BE: null (вопросов больше нет)
+BE --> FE: null → переход к генерации
+
+== Генерация плана ==
+
+FE -> BE: POST /api/ai/generate\n{mode:"plan", prompt, qa_history}
+BE -> LLM: generate(prompt, history, mode_system)
+LLM --> BE: ["промпт шаг 1", "промпт шаг 2", ...]
+BE --> FE: массив промптов-шагов
+FE --> User: PlanReview.vue (редактируемый список)
+
+User -> FE: (опционально) редактирование шагов\n→ нажатие «Запустить»
+
+== Запуск оркестратора ==
+
+FE -> BE: POST /api/ai/run/start\n{pane_id, prompts, model}
+BE -> TMX: send_text(prompt_1, enter=True)
+BE --> FE: 200 {status:"running", step_index:0}
+
+== Цикл оркестратора (шаг N) ==
+
+loop для каждого шага плана
+  BE -> BE: ждать INITIAL_GRACE_S (1 с)
+
+  group стабилизация хэша
+    loop каждые POLL_INTERVAL_S (0.3 с)
+      BE -> TMX: get_content(pane_id)
+      TMX --> BE: строки вывода pane
+      BE -> BE: хэш изменился? → сбросить таймер
+    end
+    note right: выход если хэш стабилен 1500 мс\nили прошло 30 с
+  end
+
+  BE -> LLM: ai.analyze(pane_text, current_step, remaining)
+  LLM --> BE: {"state": "...", "reason": "...", "payload": {...}}
+
+  alt state == working
+    BE -> BE: продолжить ожидание стабилизации
+  else state == ask_user (is_substantive = false)
+    BE -> LLM: ai.decide_reply(pane_text, question, kind)
+    LLM --> BE: {"text": "y"}
+    BE -> TMX: send_text("y", enter=True)
+    BE -> BE: продолжить ожидание стабилизации
+  else state == next_step
+    BE -> BE: step_index++
+    BE -> TMX: send_text(prompt_next, enter=True)
+  else state == error
+    BE -> BE: status = "error"
+  end
+end
+
+note right of BE: state == done\nstatus = "done"
+
+== Мониторинг (RunMonitor) ==
+
+loop опрос каждые 1.5 с
+  FE -> BE: GET /api/ai/run/{pane_id}
+  BE --> FE: snapshot {status, step_index, log}
+  FE --> User: обновление RunMonitor
+end
+
+BE --> FE: {status: "done"}
+FE --> User: уведомление «Выполнено»
+@enduml

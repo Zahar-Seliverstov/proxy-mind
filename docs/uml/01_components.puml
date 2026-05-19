@@ -1,0 +1,73 @@
+@startuml ProxyMind_Components
+title ProxyMind — Диаграмма компонентов
+
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+
+package "Браузер (пользователь)" {
+  package "Vue 3 SPA (порт 5173)" as FE {
+    component [SessionsPanel] as SP
+    component [PaneWorkspace] as PW
+    component [RunMonitor] as RM
+    component [ClarifyQuestions] as CQ
+    component [PlanReview] as PR
+    component [ModeSelect] as MS
+    component [ModelSelect] as ML
+    component [FilePicker] as FP
+    component [NotificationPanel] as NP
+    component [ToastStack] as TS
+    component [TopBar] as TB
+    component [Notification] as NT
+  }
+}
+
+package "Backend HTTP Server (FastAPI, порт 3000)" as BE {
+  package "Routers" {
+    component [Router /ai] as RAI
+    component [Router /tmux] as RTX
+    component [Router /fs] as RFS
+    component [Router /ollama] as ROL
+    component [Router /settings] as RST
+  }
+  package "Services" {
+    component [ai.py\n(AI-логика)] as SAI
+    component [orchestrator.py\n(оркестратор)] as ORC
+    component [tmux/\n(libtmux-обёртки)] as STX
+  }
+  package "Clients" {
+    component [ollama/client.py\n(async httpx)] as OCL
+  }
+}
+
+package "Telegram Bot (FastAPI, порт 3001)" as TGB {
+  component [router.py\nPOST /send] as TGR
+  component [client.py\nhttpx] as TGC
+}
+
+database "settings.json\n~/.config/proxymind/" as CFG
+
+node "Ollama (порт 11434)" as OLL
+node "tmux (libtmux)" as TMX
+node "Telegram API" as TGAPI
+
+FE --> BE : HTTP /api/* (axios)
+RAI --> SAI
+RAI --> ORC
+RTX --> STX
+RFS --> STX
+RST --> CFG
+
+SAI --> OCL
+ORC --> SAI
+ORC --> STX
+
+OCL --> OLL : REST API
+STX --> TMX : libtmux
+
+BE --> CFG : чтение настроек
+TGB --> CFG : чтение токенов
+TGR --> TGC
+TGC --> TGAPI : POST /sendMessage
+
+FE ..> TGB : POST /send\n(уведомления)
+@enduml

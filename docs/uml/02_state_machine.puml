@@ -1,0 +1,70 @@
+@startuml ProxyMind_StateMachine
+title ProxyMind — Диаграмма состояний оркестратора
+
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor LightBlue
+  BorderColor DarkBlue
+  FontName Arial
+}
+
+[*] --> running : start(pane_id, prompts, model)
+
+state running {
+  [*] --> send_step
+  send_step : отправка промпта\nтекущего шага в tmux
+  send_step --> wait_grace : send_text(prompt, enter=True)
+
+  wait_grace : ожидание INITIAL_GRACE_S = 1 с
+  wait_grace --> stabilize
+
+  stabilize : опрос хэша pane каждые POLL_INTERVAL_S = 0.3 с
+  stabilize --> analyze : хэш стабилен ≥ STABLE_MS (1500 мс)\nили прошло MAX_STABLE_WAIT_S (30 с)
+
+  analyze : ai.analyze(pane_text, current_step, remaining)
+  analyze --> act
+
+  state act {
+    state "state == working" as W
+    state "state == next_step" as NS
+    state "state == done" as D
+    state "state == error" as E
+    state "state == ask_user" as AU
+
+    [*] --> W
+    [*] --> NS
+    [*] --> D
+    [*] --> E
+    [*] --> AU
+  }
+
+  W --> stabilize : продолжить ожидание
+
+  NS --> send_step : step_index++\nsent_current_step = False
+
+  AU --> auto_answer
+  auto_answer : ai.decide_reply(pane_text, question, kind)\nотправка ответа в tmux
+  auto_answer --> stabilize : ответ отправлен
+
+  note on link
+    если тот же вопрос\n≥ MAX_AUTO_REPLIES_PER_QUESTION (5) раз\n→ error
+  end note
+}
+
+running --> done : D: все шаги выполнены
+running --> error : E: CLI упал / traceback\nили зависание (5 одинаковых вопросов)\nили исключение в цикле
+running --> user_paused : вызов pause()
+running --> stopped : вызов stop() / CancelledError
+
+user_paused --> running : вызов unpause()
+user_paused --> stopped : вызов stop()
+
+done : статус = "done"
+error : статус = "error"\nerror = сообщение об ошибке
+stopped : статус = "stopped"
+user_paused : статус = "user_paused"\nожидание действия пользователя
+
+done --> [*]
+error --> [*]
+stopped --> [*]
+@enduml

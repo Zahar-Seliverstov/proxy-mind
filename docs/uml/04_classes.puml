@@ -1,0 +1,99 @@
+@startuml ProxyMind_Classes
+title ProxyMind — Диаграмма классов\n(основные структуры данных)
+
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+
+note as N1
+  База данных не используется.
+  Все данные хранятся в памяти процесса (in-memory).
+  Настройки персистентны: ~/.config/proxymind/settings.json
+end note
+
+class "_Run" as Run {
+  + pane_id: str
+  + model: str
+  + prompts: list[str]
+  + status: RunStatus
+  + step_index: int
+  + sent_current_step: bool
+  + last_decision: Decision | None
+  + log: list[DecisionLogEntry]
+  + error: str | None
+  + task: asyncio.Task | None
+  --
+  + snapshot() : dict
+}
+
+enum "RunStatus" as Status {
+  running
+  user_paused
+  done
+  error
+  stopped
+}
+
+class "DecisionLogEntry" as LogEntry {
+  + at: float
+  + step_index: int
+  + state: AnalyzerState
+  + reason: str
+  + payload: dict
+}
+
+enum "AnalyzerState" as AState {
+  working
+  next_step
+  done
+  error
+  ask_user
+}
+
+class "Decision" as Dec {
+  + state: AnalyzerState
+  + reason: str
+  + payload: AskPayload | {}
+}
+
+class "AskPayload" as AskP {
+  + question: str
+  + kind: AskKind
+  + options: list[Option]
+}
+
+enum "AskKind" as Kind {
+  yesno
+  choice
+  open
+}
+
+class "Option" as Opt {
+  + label: str
+  + value: str
+}
+
+class "Settings" as Cfg {
+  + ollama_base_url: str
+  + telegram_bot_token: str
+  + telegram_chat_id: str
+  --
+  Файл: ~/.config/proxymind/settings.json
+}
+
+class "ValidationResult" as ValR {
+  + status: "ok" | "low_info" | "off_topic" | "gibberish"
+}
+
+class "Question" as Q {
+  + text: str
+  + options: list[str]
+}
+
+Run "1" *-- "0..*" LogEntry : log
+Run --> Status : status
+LogEntry --> AState : state
+Dec --> AState : state
+Dec "1" *-- "0..1" AskP : payload
+AskP --> Kind : kind
+AskP "1" *-- "0..*" Opt : options
+@enduml

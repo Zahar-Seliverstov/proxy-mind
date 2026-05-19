@@ -1,0 +1,62 @@
+:root {
+  /* ─── surfaces (VS Code Dark Modern) ─── */
+  --bg-app:       #1f1f1f;  /* editor.background */
+  --bg-input:     #1f1f1f;  /* textareas read like the editor */
+  --bg-panel:     #181818;  /* sideBar / panel / titleBar */
+  --bg-row-hover: #2a2d2e;  /* list.hoverBackground */
+
+  /* ─── borders (Dark Modern keeps these subtle) ─── */
+  --border-faint:  #252525;
+  --border:        #2b2b2b;  /* panel.border, sideBar.border */
+  --border-dim:    #3c3c3c;
+  --border-strong: #525252;
+
+  /* ─── text (dark → light, top end pushed brighter) ─── */
+  --text-invisible: #2a2a2a;
+  --text-trace:     #3a3a3a;
+  --text-muted:     #545454;
+  --text-subdued:   #636363;
+  --text-dim:       #7c7c7c;
+  --text-faint:     #9d9d9d;   /* descriptionForeground */
+  --text-secondary: #d4d4d4;
+  --text-primary:   #ebebeb;   /* brighter than canonical #cccccc */
+  --text-bright:    #ffffff;
+
+  /* ─── accent (Dark Modern link blue, hover boosted) ─── */
+  --accent:               #4daafc;   /* textLink.foreground */
+  --accent-hover:         #7fc1ff;
+  --accent-bg-subtle:     #4daafc14;
+  --accent-bg:            #4daafc24;
+  --accent-bg-rest:       #4daafc2e;
+  --accent-bg-hover:      #4daafc40;
+  --accent-border-faint:  #4daafc40;
+  --accent-border:        #4daafc66;
+  --accent-border-focus:  #0078d4;    /* focusBorder */
+  --accent-icon:          #4daafc99;
+  --accent-border-strong: #4daafcb3;
+  --accent-text-dim:      #4daafcc0;
+
+  /* ─── status (max saturation, no dust) ─── */
+  --ok:        #3ddc84;
+  --ok-bg:     #3ddc8424;
+  --danger:    #ff5252;
+  --danger-bg: #ff525224;
+  --warn:      #ff9e3f;
+  --warn-bg:   #ff9e3f24;
+
+  /* ─── typography ─── */
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --size-xs:   10px;
+  --size-sm:   11px;
+  --size-base: 12px;
+  --size-md:   13px;
+  --size-icon: 14px;
+  --size-lg:   16px;
+  --tracking:  0.04em;
+
+  /* ─── misc ─── */
+  --radius:       3px;
+  --transition:   color 0.1s, background 0.1s;
+  --shadow-toast: 0 4px 20px rgba(0, 0, 0, 0.55);
+  --sidebar-width: 260px;
+}
