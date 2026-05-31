@@ -19,4 +19,6 @@ def get_settings():
 
 @router.patch("", status_code=status.HTTP_200_OK)
 def update_settings(patch: SettingsPatch):
-    return config.update(patch.model_dump(exclude_none=True))
+    # exclude_unset (not exclude_none): an explicit null clears a field, while
+    # an omitted field is left untouched. See config.update.
+    return config.update(patch.model_dump(exclude_unset=True))

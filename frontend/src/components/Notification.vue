@@ -1,5 +1,6 @@
 <script setup>
-import { NOTIF_ICONS } from '../stores/notifications.js'
+import { X } from 'lucide-vue-next'
+import { NOTIF_ICONS, NOTIF_ICON_FALLBACK } from '../stores/notifications.js'
 
 defineProps({ notification: Object })
 defineEmits(['dismiss'])
@@ -7,15 +8,18 @@ defineEmits(['dismiss'])
 
 <template>
     <div class="n-toast" :class="`n-toast--${notification.type}`">
-        <span class="material-symbols-outlined n-icon">
-            {{ NOTIF_ICONS[notification.type] ?? 'info' }}
-        </span>
+        <component
+            :is="NOTIF_ICONS[notification.type] ?? NOTIF_ICON_FALLBACK"
+            :size="16"
+            :stroke-width="1.5"
+            class="n-icon"
+        />
         <div class="n-body">
             <p v-if="notification.title" class="n-title">{{ notification.title }}</p>
             <p class="n-text">{{ notification.text }}</p>
         </div>
         <button class="n-close" @click="$emit('dismiss')" title="Dismiss">
-            <span class="material-symbols-outlined">close</span>
+            <X :size="14" :stroke-width="1.5" />
         </button>
     </div>
 </template>
@@ -38,18 +42,16 @@ defineEmits(['dismiss'])
     pointer-events: all;
 }
 
-.n-toast--info    { border-left-color: var(--accent); }
+.n-toast--info    { border-left-color: var(--info); }
 .n-toast--success { border-left-color: var(--ok); }
 .n-toast--warn    { border-left-color: var(--warn); }
 .n-toast--error   { border-left-color: var(--danger); }
 
 .n-icon {
-    font-size: var(--size-lg);
-    line-height: 1;
     flex-shrink: 0;
     margin-top: 1px;
 }
-.n-toast--info    .n-icon { color: var(--accent); }
+.n-toast--info    .n-icon { color: var(--info); }
 .n-toast--success .n-icon { color: var(--ok); }
 .n-toast--warn    .n-icon { color: var(--warn); }
 .n-toast--error   .n-icon { color: var(--danger); }
@@ -86,9 +88,5 @@ defineEmits(['dismiss'])
 .n-close:hover {
     color: var(--text-secondary);
     background: var(--bg-row-hover);
-}
-.n-close .material-symbols-outlined {
-    font-size: var(--size-icon);
-    line-height: 1;
 }
 </style>

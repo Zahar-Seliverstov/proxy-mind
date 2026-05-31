@@ -1,5 +1,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import {
+    ChevronLeft, Pause, Play,
+    Circle, Check, LoaderCircle, X,
+    CheckCircle, Flag, CircleHelp, Zap, CircleX,
+} from 'lucide-vue-next'
+import PulseDot from './PulseDot.vue'
 import { useNotificationsStore } from '../stores/notifications.js'
 import * as aiApi from '../api/ai.js'
 import TopBar from './TopBar.vue'
@@ -15,45 +21,42 @@ const emit = defineEmits(['gone'])
 const state     = ref(null)
 const acting    = ref(false)
 const openSteps = ref(new Set())
-const POLL_MS   = 1500
 
-let timer = null
+const POLL_MS = 1000
+let pollTimer = null
 
 async function poll() {
+    let snap
     try {
-        const data = await aiApi.getRun(props.paneId)
-        if (!data) {
-            state.value = null
-            stopPolling()
-            emit('gone')
-            return
-        }
-        state.value = data
-        if (isTerminal.value && timer) stopPolling()
+        snap = await aiApi.getRun(props.paneId)
     } catch {
+        return  // временная сетевая ошибка — попробуем на следующем тике
+    }
+    if (snap === null) {
         state.value = null
-        stopPolling()
         emit('gone')
+        return
+    }
+    state.value = snap
+    if (['done', 'error', 'stopped'].includes(snap.status)) {
+        stopPolling()
     }
 }
 
 function startPolling() {
-    if (timer) return
+    stopPolling()
     poll()
-    timer = setInterval(poll, POLL_MS)
+    pollTimer = setInterval(poll, POLL_MS)
 }
 
 function stopPolling() {
-    if (timer) {
-        clearInterval(timer)
-        timer = null
-    }
+    clearInterval(pollTimer)
+    pollTimer = null
 }
 
 onMounted(startPolling)
 onUnmounted(stopPolling)
 watch(() => props.paneId, () => {
-    stopPolling()
     state.value = null
     openSteps.value = new Set()
     startPolling()
@@ -70,19 +73,31 @@ const error = computed(() => state.value?.error ?? null)
 
 const log = computed(() => {
     const items = state.value?.log ?? []
-    return [...items].reverse()
+    return [...items].reverse().map(e => ({
+        ...e,
+        meta: ACTOR_META[e.state] ?? { actor: 'cli', icon: CircleX, label: e.state },
+    }))
 })
 
 const STEP_ICONS = {
-    pending: 'radio_button_unchecked',
-    done:    'check',
-    running: 'progress_activity',
-    error:   'close',
-    paused:  'pause',
+    pending: Circle,
+    done:    Check,
+    running: LoaderCircle,
+    error:   X,
+    paused:  Pause,
+}
+
+const ACTOR_META = {
+    working:    { actor: 'cli', icon: LoaderCircle, label: 'cli working'   },
+    next_step:  { actor: 'ok',  icon: CheckCircle,  label: 'step finished' },
+    done:       { actor: 'ok',  icon: Flag,         label: 'plan finished' },
+    ask_user:   { actor: 'cli', icon: CircleHelp,   label: 'cli asked'     },
+    auto_reply: { actor: 'ai',  icon: Zap,          label: 'ai answered'   },
+    error:      { actor: 'cli', icon: CircleX,      label: 'cli error'     },
 }
 
 function stepIcon(s) {
-    return STEP_ICONS[s] ?? 'circle'
+    return STEP_ICONS[s] ?? Circle
 }
 
 function stepStatus(i) {
@@ -114,19 +129,6 @@ function fmtTime(t) {
     return d.toLocaleTimeString('en-GB', { hour12: false })
 }
 
-const ACTOR_META = {
-    working:    { actor: 'cli', icon: 'progress_activity', label: 'cli working'   },
-    next_step:  { actor: 'ok',  icon: 'check_circle', label: 'step finished' },
-    done:       { actor: 'ok',  icon: 'flag',         label: 'plan finished' },
-    ask_user:   { actor: 'cli', icon: 'help',         label: 'cli asked'     },
-    auto_reply: { actor: 'ai',  icon: 'bolt',         label: 'ai answered'   },
-    error:      { actor: 'cli', icon: 'error',        label: 'cli error'     },
-}
-
-function logMeta(e) {
-    return ACTOR_META[e.state] ?? { actor: 'cli', icon: 'circle', label: e.state }
-}
-
 function logStepLabel(e) {
     return e.state === 'done' ? '' : `step ${(e.step_index ?? 0) + 1}`
 }
@@ -148,7 +150,6 @@ async function onResumeUser() {
     acting.value = true
     try {
         state.value = await aiApi.unpauseRun(props.paneId)
-        if (!timer) startPolling()
     } catch (e) {
         nStore.push('error', String(e), 'Resume failed')
     } finally {
@@ -165,7 +166,6 @@ async function onCancel() {
         nStore.push('error', String(e), 'Cancel failed')
     } finally {
         acting.value = false
-        stopPolling()
         state.value = null
         emit('gone')
     }
@@ -177,22 +177,20 @@ async function onCancel() {
     <div class="rm">
         <TopBar>
             <button class="btn btn--ghost" :disabled="acting" @click="onCancel">
-                <span class="material-symbols-outlined">keyboard_arrow_left</span>
+                <ChevronLeft :size="14" :stroke-width="1.5" />
                 {{ isTerminal ? 'back' : 'cancel' }}
             </button>
             <template #center>
-                <span v-if="isRunning" class="rm-pulse">
-                    <span class="rm-pulse-ring" />
-                </span>
-                <span>{{ statusLabel }}</span>
+                <PulseDot v-if="isRunning" />
+                <span class="rm-status" :class="`rm-status--${status}`">{{ statusLabel }}</span>
             </template>
             <template #end>
                 <button v-if="isRunning" class="btn btn--warn" :disabled="acting" @click="onPause">
-                    <span class="material-symbols-outlined">pause</span>
+                    <Pause :size="14" :stroke-width="1.5" />
                     pause
                 </button>
                 <button v-if="isUserPaused" class="btn btn--accent" :disabled="acting" @click="onResumeUser">
-                    <span class="material-symbols-outlined">play_arrow</span>
+                    <Play :size="14" :stroke-width="1.5" />
                     resume
                 </button>
             </template>
@@ -212,10 +210,13 @@ async function onCancel() {
                         :class="{ 'rm-step--open': openSteps.has(i) }"
                         @click="toggleStep(i)"
                     >
-                        <span
-                            class="material-symbols-outlined rm-step-icon"
-                            :class="`rm-step-icon--${stepStatus(i)}`"
-                        >{{ stepIcon(stepStatus(i)) }}</span>
+                        <component
+                            :is="stepIcon(stepStatus(i))"
+                            :size="16"
+                            :stroke-width="1.5"
+                            class="rm-step-icon"
+                            :class="[`rm-step-icon--${stepStatus(i)}`, { spin: stepStatus(i) === 'running' }]"
+                        />
                         <span class="rm-step-num">{{ String(i + 1).padStart(2, '0') }}</span>
                         <div class="rm-step-text" :class="{ 'rm-step-text--collapsed': !openSteps.has(i) }">
                             {{ openSteps.has(i) ? step : oneLine(step) }}
@@ -236,12 +237,17 @@ async function onCancel() {
                             v-for="(e, i) in log"
                             :key="i"
                             class="rm-log-item"
-                            :class="`rm-log-item--${logMeta(e).actor}`"
+                            :class="`rm-log-item--${e.meta.actor}`"
                         >
-                            <span class="material-symbols-outlined rm-log-icon">{{ logMeta(e).icon }}</span>
+                            <component
+                                :is="e.meta.icon"
+                                :size="14"
+                                :stroke-width="1.5"
+                                class="rm-log-icon"
+                            />
                             <div class="rm-log-body">
                                 <div class="rm-log-head">
-                                    <span class="rm-log-actor">{{ logMeta(e).label }}</span>
+                                    <span class="rm-log-actor">{{ e.meta.label }}</span>
                                     <span v-if="logStepLabel(e)" class="rm-log-step">{{ logStepLabel(e) }}</span>
                                     <span class="rm-log-time">{{ fmtTime(e.at) }}</span>
                                 </div>
@@ -294,22 +300,13 @@ async function onCancel() {
     padding: 24px;
 }
 
-/* ── top center pulse ── */
-.rm-pulse {
-    position: relative;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
-}
-.rm-pulse-ring {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 1px solid var(--accent);
-    animation: ring-expand 2s ease-out infinite;
-}
+/* status word in the top bar — colour carries the meaning */
+.rm-status { color: var(--text-faint); }
+.rm-status--running     { color: var(--accent); }
+.rm-status--done        { color: var(--ok); }
+.rm-status--error       { color: var(--danger); }
+.rm-status--user_paused { color: var(--warn); }
+.rm-status--stopped     { color: var(--text-dim); }
 
 /* ── step list ── */
 .rm-steps {
@@ -337,15 +334,13 @@ async function onCancel() {
 .rm-step--open { background: var(--bg-input); }
 
 .rm-step-icon {
-    font-size: 16px;
     flex-shrink: 0;
     margin-top: 2px;
-    line-height: 1;
     color: var(--text-muted);
 }
 .rm-step-icon--pending { color: var(--text-muted); }
 .rm-step-icon--done    { color: var(--ok); }
-.rm-step-icon--running { color: var(--accent); animation: spin 1s linear infinite; }
+.rm-step-icon--running { color: var(--accent); }
 .rm-step-icon--error   { color: var(--danger); }
 .rm-step-icon--paused  { color: var(--warn); }
 
@@ -437,13 +432,11 @@ async function onCancel() {
     border-left: 2px solid var(--text-muted);
     border-radius: var(--radius);
 }
-.rm-log-item--cli { border-left-color: var(--warn);   }
+.rm-log-item--cli { border-left-color: var(--warn); }
 .rm-log-item--ai  { border-left-color: var(--accent); }
-.rm-log-item--ok  { border-left-color: var(--ok);     }
+.rm-log-item--ok  { border-left-color: var(--ok); }
 
 .rm-log-icon {
-    font-size: var(--size-icon);
-    line-height: 1;
     margin-top: 2px;
     color: var(--text-muted);
     flex-shrink: 0;

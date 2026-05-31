@@ -4,26 +4,26 @@ In-memory реестр. На каждую панель — максимум од
 """
 import asyncio
 import hashlib
-import logging
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from services import ai
-from services import tmux
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+from services import ai
+from services import notifications
+from services import tmux
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\x1b[()].")
 
-POLL_INTERVAL_S              = 0.3   # как часто читаем pane
-STABLE_MS                    = 1500  # сколько хэш должен не меняться чтобы признать «стабилизировался»
-INITIAL_GRACE_S              = 1.0   # подождать после send_text прежде чем начинать ловить стабилизацию
-MAX_STABLE_WAIT_S            = 30.0  # верхний предел ожидания стабилизации
-PANE_TAIL_LINES              = 200   # сколько последних строк pane передаём анализатору
-MAX_AUTO_REPLIES_PER_QUESTION = 5    # одинаковый вопрос N раз подряд → считаем зависанием
-ANALYZE_MAX_RETRIES          = 3     # сколько раз повторять analyze при битом JSON
+POLL_INTERVAL_S               = 0.3   # как часто читаем pane
+STABLE_MS                     = 1500  # сколько хэш должен не меняться чтобы признать «стабилизировался»
+INITIAL_GRACE_S               = 1.0   # подождать после send_text прежде чем начинать ловить стабилизацию
+MAX_STABLE_WAIT_S             = 30.0  # верхний предел ожидания стабилизации
+PANE_TAIL_LINES               = 200   # сколько последних строк pane передаём анализатору
+MAX_AUTO_REPLIES_PER_QUESTION = 5     # одинаковый вопрос N раз подряд → считаем зависанием
+ANALYZE_MAX_RETRIES           = 3     # сколько раз повторять analyze при битом JSON
 
 
 def _hash_lines(lines: list[str]) -> str:
@@ -149,15 +149,34 @@ async def _run_loop(run: _Run) -> None:
                 run.sent_current_step = True
             await _drive_until_step_advances(run)
     except asyncio.CancelledError:
-        logger.info("Запуск на pane=%s отменён", run.pane_id)
+        logger.info("Запуск на pane={} отменён", run.pane_id)
         run.status = "stopped"
     except Exception as e:
-        logger.exception("Сбой оркестратора на pane=%s", run.pane_id)
+        logger.exception("Сбой оркестратора на pane={}", run.pane_id)
         run.status = "error"
         run.error = str(e)
     else:
         if run.status == "running":
             run.status = "done"
+    if run.status == "done":
+        await notifications.notify(_notify_done(run))
+    elif run.status == "error":
+        await notifications.notify(_notify_error(run))
+
+
+def _notify_done(run: _Run) -> str:
+    return (
+        f"Разработка завершена.\n\n"
+        f"Шагов выполнено: {len(run.prompts)}\n"
+        f"Панель: {run.pane_id}"
+    )
+
+
+def _notify_error(run: _Run) -> str:
+    lines = [f"Ошибка выполнения.\n\nПанель: {run.pane_id}"]
+    if run.error:
+        lines.append(f"Причина: {run.error}")
+    return "\n".join(lines)
 
 
 async def _send_current_step(run: _Run) -> None:
@@ -218,7 +237,7 @@ async def _wait_for_stable(run: _Run) -> None:
         elif (now - last_change) * 1000 >= STABLE_MS:
             return
         if now - started > MAX_STABLE_WAIT_S:
-            logger.warning("pane=%s стабилизация не дождалась, форсируем анализ", run.pane_id)
+            logger.warning("pane={} стабилизация не дождалась, форсируем анализ", run.pane_id)
             return
         await asyncio.sleep(POLL_INTERVAL_S)
 
@@ -232,13 +251,13 @@ async def _analyze(run: _Run) -> dict[str, Any]:
     for attempt in range(ANALYZE_MAX_RETRIES):
         try:
             result = await ai.analyze(pane_text, current, remaining, run.model)
-            if result["state"] != "ask_user" or "анализатор" not in result["reason"]:
+            if not ai.is_fallback(result):
                 return result
             last_err = result["reason"]
-            logger.warning("analyze попытка %d/%d: %s", attempt + 1, ANALYZE_MAX_RETRIES, last_err)
+            logger.warning("analyze попытка {}/{}: {}", attempt + 1, ANALYZE_MAX_RETRIES, last_err)
         except Exception as e:
             last_err = str(e)
-            logger.exception("Ошибка analyze() на pane=%s попытка %d", run.pane_id, attempt + 1)
+            logger.exception("Ошибка analyze() на pane={} попытка {}", run.pane_id, attempt + 1)
         if attempt < ANALYZE_MAX_RETRIES - 1:
             await asyncio.sleep(1.0)
     return {"state": "ask_user", "reason": last_err or "сбой анализатора", "payload": {}}
@@ -288,13 +307,13 @@ async def _act(run: _Run, decision: dict[str, Any]) -> bool:
 async def _auto_answer(run: _Run, decision: dict[str, Any]) -> bool:
     payload = decision.get("payload") or {}
     lines = await tmux.panes.get_content(run.pane_id)
-    pane_text = _tail(lines)
+    pane_text = _clean_pane(_tail(lines))
     current = run.prompts[run.step_index] if run.step_index < len(run.prompts) else ""
     remaining = run.prompts[run.step_index + 1:]
     try:
         text = await ai.decide_reply(pane_text, current, remaining, payload, run.model)
     except Exception:
-        logger.exception("decide_reply упал на pane=%s", run.pane_id)
+        logger.exception("decide_reply упал на pane={}", run.pane_id)
         text = ""
 
     question = (payload.get("question") or "").strip()

@@ -1,13 +1,11 @@
-import logging
 import shutil
 import subprocess
 
 import libtmux
 import libtmux.exc
+from loguru import logger
 
 from ._helpers import find_session
-
-logger = logging.getLogger(__name__)
 
 
 def _serialize_session(s) -> dict:
@@ -58,17 +56,14 @@ def _generate_unique_name(server: libtmux.Server) -> str:
 
 async def create(name: str | None = None, start_directory: str | None = None) -> str:
     server = libtmux.Server()
-    resolved_name = name if name else _generate_unique_name(server)
+    resolved_name = name or _generate_unique_name(server)
     try:
         server.new_session(session_name=resolved_name, start_directory=start_directory)
-        logger.info("Сессия '%s' успешно создана.", resolved_name)
-        return resolved_name
     except libtmux.exc.TmuxSessionExists:
-        logger.warning("Сессия '%s' уже существует.", resolved_name)
+        logger.warning("Сессия '{}' уже существует.", resolved_name)
         raise
-    except libtmux.exc.LibTmuxException:
-        logger.error("Ошибка при создании сессии '%s'.", resolved_name, exc_info=True)
-        raise
+    logger.info("Сессия '{}' создана.", resolved_name)
+    return resolved_name
 
 
 async def remove(session_name: str) -> None:
@@ -107,7 +102,7 @@ async def attach(
         target += f".{pane_id}"
 
     try:
-        logger.info("Запуск терминала '%s' для цели '%s'.", terminal_name, target)
+        logger.info("Запуск терминала '{}' для цели '{}'.", terminal_name, target)
         subprocess.Popen(
             [terminal_name, "-e", "tmux", "attach-session", "-t", target],
             stdout=subprocess.DEVNULL,
@@ -115,5 +110,5 @@ async def attach(
             start_new_session=True,
         )
     except Exception:
-        logger.error("Ошибка запуска процесса терминала.", exc_info=True)
+        logger.exception("Ошибка запуска процесса терминала.")
         raise RuntimeError("Не удалось запустить процесс терминала.")

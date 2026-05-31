@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
+from loguru import logger
 from schemas.ai_schema import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -22,6 +23,7 @@ async def validate(body: ValidateRequest):
     try:
         return await ai.validate(body.prompt, body.mode, body.model)
     except Exception as e:
+        logger.exception("validate failed — model={} mode={}", body.model, body.mode)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
@@ -31,6 +33,7 @@ async def questions(body: QuestionsRequest):
         history = [h.model_dump() for h in body.history]
         return await ai.get_next_question(body.prompt, body.mode, body.model, history)
     except Exception as e:
+        logger.exception("questions failed — model={} history_len={}", body.model, len(body.history))
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
@@ -39,6 +42,7 @@ async def generate(body: GenerateRequest):
     try:
         return await ai.generate(body.prompt, body.mode, body.model, body.answers)
     except Exception as e:
+        logger.exception("generate failed — model={} mode={} answers={}", body.model, body.mode, body.answers)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 

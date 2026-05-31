@@ -1,35 +1,23 @@
 <script setup>
 import { ref } from 'vue'
-import { useNotificationsStore, NOTIF_ICONS } from '../stores/notifications.js'
+import { Bell, X } from 'lucide-vue-next'
+import { useNotificationsStore, NOTIF_ICONS, NOTIF_ICON_FALLBACK } from '../stores/notifications.js'
+import { useResize } from '../composables/useResize.js'
 
 const store = useNotificationsStore()
-const panel = ref(null)
+const panelWidth = ref(280)
 
 function fmt(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function startResize(e) {
-    const startX = e.clientX
-    const startW = parseInt(panel.value?.style.width) || 280
-
-    const onMove = (e) => {
-        const w = Math.max(200, Math.min(600, startW + e.clientX - startX))
-        panel.value.style.width = w + 'px'
-    }
-    const onUp = () => {
-        window.removeEventListener('mousemove', onMove)
-        window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-}
+const startResize = useResize(panelWidth, { min: 200, max: 600 })
 </script>
 
 <template>
-    <Teleport to="body">
-        <Transition name="np">
-            <div v-if="store.panelOpen" class="np" ref="panel">
+    <Transition name="np">
+        <div v-if="store.panelOpen" class="np" :style="{ width: panelWidth + 'px' }">
+            <div class="np-inner">
                 <div class="np-header">
                     <span class="np-title">Notifications</span>
                     <div class="np-actions">
@@ -39,14 +27,14 @@ function startResize(e) {
                             @click="store.clear()"
                             title="Clear all"
                         >
-                            <span class="material-symbols-outlined">close</span>
+                            <X :size="14" :stroke-width="1.5" />
                             clear all
                         </button>
                     </div>
                 </div>
 
                 <div v-if="!store.all.length" class="np-empty">
-                    <span class="material-symbols-outlined np-empty-icon">notifications_none</span>
+                    <Bell :size="32" :stroke-width="1" class="np-empty-icon" />
                     <span>no notifications</span>
                 </div>
 
@@ -57,9 +45,12 @@ function startResize(e) {
                         class="np-item"
                         :class="`np-item--${n.type}`"
                     >
-                        <span class="material-symbols-outlined np-item-icon">
-                            {{ NOTIF_ICONS[n.type] ?? 'info' }}
-                        </span>
+                        <component
+                            :is="NOTIF_ICONS[n.type] ?? NOTIF_ICON_FALLBACK"
+                            :size="14"
+                            :stroke-width="1.5"
+                            class="np-item-icon"
+                        />
                         <div class="np-item-body">
                             <p v-if="n.title" class="np-item-title">{{ n.title }}</p>
                             <p class="np-item-text">{{ n.text }}</p>
@@ -67,27 +58,33 @@ function startResize(e) {
                         <span class="np-item-time">{{ fmt(n.ts) }}</span>
                     </li>
                 </ul>
-
-                <div class="np-resize" @mousedown.prevent="startResize" />
             </div>
-        </Transition>
-    </Teleport>
+
+            <div class="np-resize" @mousedown.prevent="startResize" />
+        </div>
+    </Transition>
 </template>
 
 <style scoped>
 .np {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: var(--sidebar-width, 260px);
     width: 280px;
+    flex-shrink: 0;
+    height: 100vh;
     background: var(--bg-panel);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    z-index: 5;
     font-family: var(--font-mono);
     font-size: var(--size-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.np-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .np-resize {
@@ -109,7 +106,8 @@ function startResize(e) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.8rem 1rem;
+    padding: 0 16px;
+    height: 46px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -140,10 +138,6 @@ function startResize(e) {
     color: var(--danger);
     background: var(--danger-bg);
 }
-.np-clear .material-symbols-outlined {
-    font-size: var(--size-icon);
-    line-height: 1;
-}
 
 .np-empty {
     flex: 1;
@@ -156,8 +150,7 @@ function startResize(e) {
     font-size: var(--size-sm);
 }
 .np-empty-icon {
-    font-size: 2rem;
-    line-height: 1;
+    color: var(--text-muted);
 }
 
 .np-list {
@@ -176,6 +169,9 @@ function startResize(e) {
     border-bottom: 1px solid var(--border-faint);
     position: relative;
 }
+.np-item:last-child {
+    border-bottom: none;
+}
 .np-item::before {
     content: '';
     position: absolute;
@@ -184,18 +180,16 @@ function startResize(e) {
     bottom: 0;
     width: 2px;
 }
-.np-item--info::before    { background: var(--accent); }
+.np-item--info::before    { background: var(--info); }
 .np-item--success::before { background: var(--ok); }
 .np-item--warn::before    { background: var(--warn); }
 .np-item--error::before   { background: var(--danger); }
 
 .np-item-icon {
-    font-size: var(--size-icon);
-    line-height: 1;
     flex-shrink: 0;
-    margin-top: 2px;
+    margin-top: 1px;
 }
-.np-item--info    .np-item-icon { color: var(--accent); }
+.np-item--info    .np-item-icon { color: var(--info); }
 .np-item--success .np-item-icon { color: var(--ok); }
 .np-item--warn    .np-item-icon { color: var(--warn); }
 .np-item--error   .np-item-icon { color: var(--danger); }
@@ -208,6 +202,7 @@ function startResize(e) {
     margin: 0 0 2px;
     color: var(--text-primary);
     font-size: var(--size-base);
+    font-weight: 600;
 }
 .np-item-text {
     margin: 0;
@@ -227,12 +222,18 @@ function startResize(e) {
 <style>
 .np-enter-active,
 .np-leave-active {
-    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.22s ease;
+    transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.18s ease;
+    overflow: hidden;
 }
 .np-enter-from,
 .np-leave-to {
-    transform: translateX(-12px);
+    width: 0 !important;
     opacity: 0;
 }
+
+/* Inner content fades in after width opens, hides instantly on close */
+.np-enter-from .np-inner { opacity: 0; }
+.np-enter-active .np-inner { transition: opacity 0.18s ease 0.15s; }
+.np-leave-active .np-inner { opacity: 0; }
 </style>

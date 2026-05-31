@@ -1,48 +1,71 @@
 :root {
-  /* ─── surfaces (VS Code Dark Modern) ─── */
-  --bg-app:       #1f1f1f;  /* editor.background */
-  --bg-input:     #1f1f1f;  /* textareas read like the editor */
-  --bg-panel:     #181818;  /* sideBar / panel / titleBar */
-  --bg-row-hover: #2a2d2e;  /* list.hoverBackground */
+  /* ─── surfaces — лестница глубины: база → панель → поле → ховер ─── */
+  --bg-app:       #0b0b0b;   /* базовый фон (рабочая область, body) */
+  --bg-panel:     #141414;   /* приподнятый каркас: сайдбар, тулбары, карточки, дропдауны */
+  --bg-input:     #1b1b1b;   /* поля ввода / inset-«колодцы» — светлее панели */
+  --bg-row-hover: #232323;   /* ховер строк — отчётливо ощущается */
 
-  /* ─── borders (Dark Modern keeps these subtle) ─── */
-  --border-faint:  #252525;
-  --border:        #2b2b2b;  /* panel.border, sideBar.border */
-  --border-dim:    #3c3c3c;
-  --border-strong: #525252;
+  /* ─── borders — иерархия от тихих разделителей до интерактивных ─── */
+  --border-faint:  #1e1e1e;  /* разделители строк, линии дерева */
+  --border:        #2a2a2a;  /* структурные края панелей/тулбаров */
+  --border-dim:    #363636;  /* рамки полей/карточек */
+  --border-strong: #474747;  /* интерактивные / ховер-рамки */
 
-  /* ─── text (dark → light, top end pushed brighter) ─── */
-  --text-invisible: #2a2a2a;
-  --text-trace:     #3a3a3a;
-  --text-muted:     #545454;
-  --text-subdued:   #636363;
-  --text-dim:       #7c7c7c;
-  --text-faint:     #9d9d9d;   /* descriptionForeground */
-  --text-secondary: #d4d4d4;
-  --text-primary:   #ebebeb;   /* brighter than canonical #cccccc */
-  --text-bright:    #ffffff;
+  /* ─── text — серая шкала: низ поднят до читаемого, верх для акцентов ─── */
+  --text-invisible: #0a0a0a;  /* только декоративно/невидимо */
+  --text-trace:     #1f1f1f;  /* «погасший» неон заголовка */
+  --text-muted:     #5a5a5a;  /* тихие иконки в покое, плейсхолдеры, таймстемпы — приглушённо, но видно */
+  --text-subdued:   #6e6e6e;
+  --text-dim:       #828282;  /* третичные подписи, проявляемые контролы */
+  --text-faint:     #9c9c9c;  /* подписи секций, вторичные капшены */
+  --text-secondary: #b8b8b8;  /* вторичный текст */
+  --text-primary:   #dcdcdc;  /* основной текст */
+  --text-bright:    #f6f6f6;  /* акцентная яркость */
 
-  /* ─── accent (Dark Modern link blue, hover boosted) ─── */
-  --accent:               #4daafc;   /* textLink.foreground */
-  --accent-hover:         #7fc1ff;
-  --accent-bg-subtle:     #4daafc14;
-  --accent-bg:            #4daafc24;
-  --accent-bg-rest:       #4daafc2e;
-  --accent-bg-hover:      #4daafc40;
-  --accent-border-faint:  #4daafc40;
-  --accent-border:        #4daafc66;
-  --accent-border-focus:  #0078d4;    /* focusBorder */
-  --accent-icon:          #4daafc99;
-  --accent-border-strong: #4daafcb3;
-  --accent-text-dim:      #4daafcc0;
+  /* ─── accent — blue (единый акцент: первичные действия, активное, live) ─── */
+  --accent:               #3b82f6;
+  --accent-hover:         #93c5fd;
+  --accent-bg-subtle:     rgba(59, 130, 246, 0.04);
+  --accent-bg:            rgba(59, 130, 246, 0.08);
+  --accent-bg-rest:       rgba(59, 130, 246, 0.10);
+  --accent-bg-hover:      rgba(59, 130, 246, 0.16);
+  --accent-border-faint:  rgba(59, 130, 246, 0.18);
+  --accent-border:        rgba(59, 130, 246, 0.35);
+  --accent-border-focus:  rgba(59, 130, 246, 0.65);
+  --accent-icon:          rgba(59, 130, 246, 0.55);
+  --accent-border-strong: rgba(59, 130, 246, 0.55);
+  --accent-text-dim:      rgba(147, 197, 253, 0.80);
+  --accent-text-hover:    #93c5fd;
+  --warn-text-hover:      #ffd060;
 
-  /* ─── status (max saturation, no dust) ─── */
-  --ok:        #3ddc84;
-  --ok-bg:     #3ddc8424;
-  --danger:    #ff5252;
-  --danger-bg: #ff525224;
-  --warn:      #ff9e3f;
-  --warn-bg:   #ff9e3f24;
+  /* ─── status ─── */
+  --ok:        #22c55e;
+  --ok-bg:     rgba(34, 197, 94, 0.10);
+  --danger:    #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.10);
+  --warn:        #f97316;
+  --warn-bg:     rgba(249, 115, 22, 0.10);
+  --warn-bg-hover: rgba(249, 115, 22, 0.18);
+  --warn-border: rgba(249, 115, 22, 0.35);
+  --info:      #3b82f6;
+  --info-bg:   rgba(59, 130, 246, 0.10);
+
+  /* ─── glow variables (для ProxyMind-анимаций и статус-теней) ─── */
+  --glow-accent:      0 0 6px rgba(59, 130, 246, 0.35);
+  --glow-ok:          0 0 6px rgba(34, 197, 94, 0.35);
+  --glow-danger:      0 0 6px rgba(239, 68, 68, 0.35);
+  --glow-warn:        0 0 6px rgba(249, 115, 22, 0.35);
+  --glow-pane-active: inset 2px 0 0 rgba(255, 255, 255, 0.30);
+
+  /* ─── text-shadow (используется только в ProxyMind-заголовке) ─── */
+  --text-glow-accent: none;
+  --text-glow-ok:     none;
+  --text-glow-danger: none;
+  --text-glow-warn:   none;
+  --text-glow-title:  0 0 10px rgba(68, 136, 255, 0.85), 0 0 28px rgba(68, 136, 255, 0.40);
+
+  /* ─── misc shadows ─── */
+  --shadow-toast: 0 4px 24px rgba(0, 0, 0, 0.85);
 
   /* ─── typography ─── */
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
@@ -55,8 +78,13 @@
   --tracking:  0.04em;
 
   /* ─── misc ─── */
-  --radius:       3px;
-  --transition:   color 0.1s, background 0.1s;
-  --shadow-toast: 0 4px 20px rgba(0, 0, 0, 0.55);
-  --sidebar-width: 260px;
+  --radius:        2px;
+  --transition:    color 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  --sidebar-width: 300px;
+
+  /* ─── z-index layers ─── */
+  --z-panel:     5;
+  --z-sidebar:   10;
+  --z-toast:     9000;
+  --z-scanlines: 9998;
 }

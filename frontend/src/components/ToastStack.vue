@@ -25,7 +25,7 @@ const store = useNotificationsStore()
     position: fixed;
     top: 16px;
     left: calc(var(--sidebar-width, 260px) + 12px);
-    z-index: 9000;
+    z-index: var(--z-toast);
     pointer-events: none;
 }
 

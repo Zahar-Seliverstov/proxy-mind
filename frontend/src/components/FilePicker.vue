@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from "vue";
+import { X, ArrowUp, Folder, Check } from 'lucide-vue-next'
 import { browse } from "../api/fs.js";
 
 const props = defineProps({ modelValue: String });
@@ -35,7 +36,7 @@ function select(path) {
         <div class="fp-header">
             <span class="fp-path">{{ current }}</span>
             <button class="fp-close" @click="emit('close')" title="Close">
-                <span class="material-symbols-outlined">close</span>
+                <X :size="14" :stroke-width="1.5" />
             </button>
         </div>
 
@@ -43,18 +44,18 @@ function select(path) {
 
         <ul class="fp-list">
             <li v-if="parent" class="fp-up-row" @click="load(parent)">
-                <span class="material-symbols-outlined fp-icon">arrow_upward</span>
+                <ArrowUp :size="13" :stroke-width="1.5" class="fp-icon fp-icon--up" />
                 <span class="fp-name">..</span>
             </li>
             <li v-for="item in items" :key="item.path" @click="load(item.path)">
-                <span class="material-symbols-outlined fp-icon">folder</span>
+                <Folder :size="13" :stroke-width="1.5" class="fp-icon" />
                 <span class="fp-name">{{ item.name }}</span>
                 <button
                     class="fp-sel"
                     @click.stop="select(item.path)"
                     title="Select"
                 >
-                    <span class="material-symbols-outlined">check</span>
+                    <Check :size="13" :stroke-width="1.5" />
                     <span class="fp-sel-label">select</span>
                 </button>
             </li>
@@ -112,10 +113,6 @@ function select(path) {
     color: var(--danger);
     background: var(--danger-bg);
 }
-.fp-close .material-symbols-outlined {
-    font-size: var(--size-icon);
-    line-height: 1;
-}
 
 .fp-error {
     padding: 6px 10px;
@@ -142,14 +139,12 @@ function select(path) {
 .fp-list li:hover {
     background: var(--bg-row-hover);
 }
-.fp-up-row .fp-icon {
-    color: var(--text-muted);
-}
 .fp-icon {
-    font-size: var(--size-md);
-    line-height: 1;
     color: var(--text-dim);
     flex-shrink: 0;
+}
+.fp-icon--up {
+    color: var(--text-muted);
 }
 .fp-list li:hover .fp-icon {
     color: var(--accent-icon);
@@ -167,7 +162,7 @@ function select(path) {
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--text-dim);
     display: flex;
     align-items: center;
     padding: 1px 4px 1px 2px;
@@ -181,10 +176,6 @@ function select(path) {
 .fp-sel:hover {
     color: var(--accent);
     background: var(--accent-bg);
-}
-.fp-sel .material-symbols-outlined {
-    font-size: var(--size-md);
-    line-height: 1;
 }
 .fp-sel-label {
     font-size: var(--size-base);
@@ -212,7 +203,7 @@ function select(path) {
 }
 .fp-btn-sel:hover {
     background: var(--accent-bg-rest);
-    color: var(--accent);
+    color: var(--accent-text-hover);
     border-color: var(--accent-border-focus);
 }
 </style>

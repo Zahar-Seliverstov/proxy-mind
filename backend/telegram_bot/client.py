@@ -1,12 +1,19 @@
-import httpx
+"""Telegram HTTP client for the standalone bot service.
 
-_BASE_URL = "https://api.telegram.org"
+The implementation is shared with the API server: the canonical version lives
+in ``http_server/clients/telegram``. This module re-exports it so there is a
+single ``send_message`` to maintain. ``http_server`` is *appended* (not
+inserted) to ``sys.path`` so this service's own ``config``/``main`` modules
+still take precedence — only the ``clients`` package, which exists nowhere
+else, is resolved there.
+"""
+import sys
+from pathlib import Path
 
+_HTTP_SERVER = Path(__file__).resolve().parent.parent / "http_server"
+if str(_HTTP_SERVER) not in sys.path:
+    sys.path.append(str(_HTTP_SERVER))
 
-async def send_message(token: str, chat_id: str, text: str) -> dict:
-    url = f"{_BASE_URL}/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    async with httpx.AsyncClient(timeout=15) as client:
-        response = await client.post(url, json=payload)
-        response.raise_for_status()
-        return response.json()
+from clients.telegram.client import send_message  # noqa: E402
+
+__all__ = ["send_message"]
