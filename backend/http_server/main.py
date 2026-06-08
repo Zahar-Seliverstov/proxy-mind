@@ -11,6 +11,7 @@ from routers.ollama import router as ollama_router
 from routers.ai import router as ai_router
 from routers.settings import router as settings_router
 from routers.stats import router as stats_router
+from routers.ws import router as ws_router
 
 log.setup()
 
@@ -22,14 +23,19 @@ app.include_router(ollama_router)
 app.include_router(ai_router)
 app.include_router(settings_router)
 app.include_router(stats_router)
+app.include_router(ws_router)
 
 
 @app.exception_handler(libtmux.exc.LibTmuxException)
-async def libtmux_exception_handler(request: Request, exc: libtmux.exc.LibTmuxException):
+async def libtmux_exception_handler(
+    request: Request, exc: libtmux.exc.LibTmuxException
+):
     logger.error("LibTmux error: {}", exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Внутренняя ошибка tmux. Проверьте, что tmux запущен и доступен."},
+        content={
+            "detail": "Внутренняя ошибка tmux. Проверьте, что tmux запущен и доступен."
+        },
     )
 
 

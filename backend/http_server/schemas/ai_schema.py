@@ -55,10 +55,14 @@ class RunRequest(BaseModel):
     def validate_payload(self) -> "RunRequest":
         if self.mode in (Mode.plan, Mode.manual):
             if not self.steps:
-                raise ValueError(f"Для режима '{self.mode.value}' необходимо передать 'steps'.")
+                raise ValueError(
+                    f"Для режима '{self.mode.value}' необходимо передать 'steps'."
+                )
         else:
             if not self.content or not self.content.strip():
-                raise ValueError("Для режимов 'optimize' и 'direct' необходимо передать 'content'.")
+                raise ValueError(
+                    "Для режимов 'optimize' и 'direct' необходимо передать 'content'."
+                )
         return self
 
 
@@ -73,5 +77,3 @@ class AnalyzeResponse(BaseModel):
     state: str
     reason: str
     payload: dict[str, Any] = {}
-
-

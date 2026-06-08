@@ -15,6 +15,8 @@ import PlanReview from './PlanReview.vue'
 import ClarifyQuestions from './ClarifyQuestions.vue'
 import RunMonitor from './RunMonitor.vue'
 import TopBar from './TopBar.vue'
+import RainbowText from './RainbowText.vue'
+import { useWebSocket } from '../composables/useWebSocket.js'
 
 const props = defineProps({ paneId: { type: String, required: true } })
 const emit  = defineEmits(['loading'])
@@ -24,7 +26,6 @@ const nStore = useNotificationsStore()
 
 const pane = computed(() => store.findPane(props.paneId))
 
-// ── copy-to-clipboard ─────────────────────────────────
 const pathCopied = ref(false)
 let pathCopyTimer = null
 function copyPath() {
@@ -36,17 +37,14 @@ function copyPath() {
     pathCopyTimer = setTimeout(() => { pathCopied.value = false }, 1200)
 }
 
-// ── models ────────────────────────────────────────────
 const models        = ref([])
 const selectedModel = ref('')
 const modelsLoading = ref(false)
 const modelsFailed  = ref(false)
 
-// ── modes ─────────────────────────────────────────────
 const modes        = ref([])
 const selectedMode = ref('plan')
 
-// ── caret-following generate button ───────────────────
 const generateBtnPos  = ref(null)
 const generateBtnReady = ref(false)
 let generateBtnTimer = null
@@ -88,7 +86,6 @@ function measureCaretPos(el) {
     generateBtnTimer = setTimeout(() => { generateBtnReady.value = true }, 400)
 }
 
-// ── input & workflow ──────────────────────────────────
 const input           = ref('')
 const manualSteps     = ref([])
 const originalPrompt  = ref('')
@@ -98,7 +95,6 @@ const currentQuestion = ref(null)
 const clarifyHistory  = ref([])
 const warnStatus      = ref(null)
 
-// ── computed ──────────────────────────────────────────
 const isIdle        = computed(() => phase.value === 'idle')
 const isValidating  = computed(() => phase.value === 'validating')
 const isWarning     = computed(() => phase.value === 'warning')
@@ -134,28 +130,33 @@ const loadingLabel = computed(() => {
     return ''
 })
 
-// ── run presence detection ────────────────────────────
 const hasRun = ref(false)
-let runProbeTimer = null
-const RUN_PROBE_MS = 5000
+const ws = useWebSocket()
+let _offRunStatus = null
+let _offRunInit   = null
 
-async function probeRun() {
-    try {
-        const data = await aiApi.getRun(props.paneId)
-        hasRun.value = !!data
-    } catch {
-        hasRun.value = false
-    }
+function _runStatusHandler(msg) {
+    if (msg.pane_id !== props.paneId) return
+
+    if (msg.snapshot) hasRun.value = true
 }
 
 function startRunProbe() {
-    if (runProbeTimer) return
-    probeRun()
-    runProbeTimer = setInterval(probeRun, RUN_PROBE_MS)
+    _offRunStatus?.()
+    _offRunInit?.()
+    _offRunStatus = ws.on('run:status', _runStatusHandler)
+    _offRunInit   = ws.on('init', (msg) => {
+
+        const snap = msg.runs?.[props.paneId]
+        if (snap) hasRun.value = true
+    })
+
+    aiApi.getRun(props.paneId).then(d => { hasRun.value = !!d }).catch(() => {})
 }
 
 function stopRunProbe() {
-    if (runProbeTimer) { clearInterval(runProbeTimer); runProbeTimer = null }
+    _offRunStatus?.(); _offRunStatus = null
+    _offRunInit?.();   _offRunInit   = null
 }
 
 const WARN_MESSAGES = {
@@ -178,7 +179,6 @@ onUnmounted(() => {
     store.setPanePhase(props.paneId, null)
 })
 
-// ── init ──────────────────────────────────────────────
 async function fetchModels() {
     modelsLoading.value = true
     modelsFailed.value  = false
@@ -207,7 +207,6 @@ async function fetchConfig() {
     }
 }
 
-// ── actions ───────────────────────────────────────────
 async function onGenerate() {
     if (!canGenerate.value) return
 
@@ -233,7 +232,7 @@ async function onGenerate() {
                 return
             }
         } catch {
-            // fail open — не блокируем при ошибке валидации
+
         }
     }
 
@@ -329,7 +328,6 @@ async function doRun(payload) {
         manualSteps.value  = []
         reviewData.value   = null
         hasRun.value       = true
-        probeRun()
     } catch (e) {
         nStore.push('error', String(e), 'Run failed')
         phase.value = prev
@@ -348,14 +346,12 @@ function onBack() {
 <template>
     <div class="pw">
 
-        <!-- active run monitor (preempts idle prompt input) -->
         <RunMonitor
             v-if="isIdle && hasRun"
             :pane-id="props.paneId"
             @gone="hasRun = false"
         />
 
-        <!-- idle: toolbar + prompt input -->
         <template v-else-if="isIdle">
             <TopBar :title="idleTitle">
                 <div class="pw-ctrl">
@@ -373,10 +369,8 @@ function onBack() {
                 </div>
             </TopBar>
 
-            <!-- manual: PlanReview with built-in caret run button -->
             <PlanReview v-if="selectedMode === 'manual'" v-model:steps="manualSteps" @run="onGenerate" />
 
-            <!-- text modes: textarea with caret-following button -->
             <div v-else class="pw-input-wrap">
                 <textarea
                     v-model="input"
@@ -405,13 +399,12 @@ function onBack() {
             </div>
         </template>
 
-        <!-- loading -->
         <template v-else-if="isLoading">
-            <TopBar :title="loadingLabel" :rainbow="true" />
-            <div class="pw-loading" />
+            <div class="pw-loading">
+                <RainbowText :text="loadingLabel" :speed="2.4" font-size="1.6rem" />
+            </div>
         </template>
 
-        <!-- validation warning -->
         <template v-else-if="isWarning">
             <TopBar title="warning">
                 <button class="btn btn--ghost" @click="onWarnCancel">
@@ -433,7 +426,6 @@ function onBack() {
             </div>
         </template>
 
-        <!-- clarifying questions -->
         <ClarifyQuestions
             v-else-if="isClarifying"
             :question="currentQuestion"
@@ -443,7 +435,6 @@ function onBack() {
             @back="onBack"
         />
 
-        <!-- plan review -->
         <template v-else-if="isReview && reviewData.mode === 'plan'">
             <TopBar title="plan">
                 <button class="btn btn--ghost" @click="onBack">
@@ -463,7 +454,6 @@ function onBack() {
             />
         </template>
 
-        <!-- optimize review -->
         <template v-else-if="isReview && reviewData.mode === 'optimize'">
             <TopBar title="optimized prompt">
                 <button class="btn btn--ghost" @click="onBack">
@@ -494,7 +484,6 @@ function onBack() {
             </div>
         </template>
 
-        <!-- path bar -->
         <div class="pw-path">
             <Folder :size="14" :stroke-width="1.5" class="pw-path-icon" />
             <span
@@ -519,14 +508,12 @@ function onBack() {
     font-size: var(--size-base);
 }
 
-/* ── optimize actions (below textarea, inside pw-prompt-area) ── */
 .pw-opt-actions {
     display: flex;
     gap: 8px;
     flex-shrink: 0;
 }
 
-/* ── path bar ── */
 .pw-path {
     display: flex;
     align-items: center;
@@ -559,7 +546,6 @@ function onBack() {
 
 .pw-pane-id { color: var(--text-muted); font-size: var(--size-xs); flex-shrink: 0; }
 
-/* ── idle toolbar controls ── */
 .pw-ctrl {
     display: flex;
     align-items: center;
@@ -582,7 +568,6 @@ function onBack() {
     padding: 2px 8px;
 }
 
-/* ── caret-following button ── */
 .pw-input-wrap {
     flex: 1;
     position: relative;
@@ -592,8 +577,17 @@ function onBack() {
 }
 .pw-caret-btn {
     position: absolute;
+
+    background:
+        linear-gradient(var(--accent-bg-rest), var(--accent-bg-rest)),
+        var(--bg-panel);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
     transition: top 0.07s ease, left 0.07s ease;
+}
+.pw-caret-btn:hover {
+    background:
+        linear-gradient(var(--accent-bg-hover), var(--accent-bg-hover)),
+        var(--bg-panel);
 }
 .pw-caret-btn--moving { pointer-events: none; }
 .caret-btn-enter-active { transition: opacity 0.15s, transform 0.15s; }
@@ -601,7 +595,6 @@ function onBack() {
 .caret-btn-enter-from,
 .caret-btn-leave-to     { opacity: 0; transform: scale(0.85); }
 
-/* ── prompt area: scrollable bg, textarea grows with content ── */
 .pw-prompt-area {
     flex: 1;
     overflow-y: auto;
@@ -612,7 +605,6 @@ function onBack() {
     scrollbar-width: thin;
 }
 
-/* ── textarea (prompt input & optimize result) ── */
 .pw-textarea {
     flex: 1;
     resize: none;
@@ -627,7 +619,6 @@ function onBack() {
     scrollbar-width: thin;
 }
 
-/* prompt textarea (inside pw-prompt-area) grows with content */
 .pw-prompt-area .pw-textarea {
     flex: none;
     padding: 0;
@@ -635,17 +626,23 @@ function onBack() {
     min-height: 1.6em;
     width: 100%;
 }
-/* prompt textarea (inside pw-input-wrap) fills space for caret tracking */
+
 .pw-input-wrap .pw-textarea {
     flex: 1;
 }
 
 .pw-textarea::placeholder { color: var(--text-muted); }
 
-.pw-loading { flex: 1; }
+.pw-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    letter-spacing: var(--tracking);
+}
 
-
-/* ── validation warning ── */
 .pw-warn-body {
     flex: 1;
     display: flex;

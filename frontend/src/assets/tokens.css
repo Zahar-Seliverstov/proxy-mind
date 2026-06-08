@@ -57,12 +57,11 @@
   --glow-warn:        0 0 6px rgba(249, 115, 22, 0.35);
   --glow-pane-active: inset 2px 0 0 rgba(255, 255, 255, 0.30);
 
-  /* ─── text-shadow (используется только в ProxyMind-заголовке) ─── */
+  /* ─── text-shadow placeholders (свечения отключены) ─── */
   --text-glow-accent: none;
   --text-glow-ok:     none;
   --text-glow-danger: none;
   --text-glow-warn:   none;
-  --text-glow-title:  0 0 10px rgba(68, 136, 255, 0.85), 0 0 28px rgba(68, 136, 255, 0.40);
 
   /* ─── misc shadows ─── */
   --shadow-toast: 0 4px 24px rgba(0, 0, 0, 0.85);

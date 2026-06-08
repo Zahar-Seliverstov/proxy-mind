@@ -1,8 +1,7 @@
 <script setup>
-import { X } from 'lucide-vue-next'
+import { X, LoaderCircle } from 'lucide-vue-next'
 import { useSessionsStore } from '../stores/sessions.js'
 import { fmtPath } from '../utils.js'
-import PulseDot from './PulseDot.vue'
 
 const store = useSessionsStore()
 
@@ -26,7 +25,12 @@ const isPaneLoading = (paneId) => LOADING_PHASES.has(store.panePhases[paneId])
                 @keydown.space.prevent="store.activeTabPaneId = pane.id"
                 :title="pane.path"
             >
-                <PulseDot v-if="isPaneLoading(pane.id)" :size="7" class="tb-dot" />
+                <LoaderCircle
+                    v-if="isPaneLoading(pane.id)"
+                    :size="13"
+                    :stroke-width="2"
+                    class="tb-spinner"
+                />
                 <span class="tb-cmd">{{ pane.command }}</span>
                 <span class="tb-path">{{ fmtPath(pane.path) }}</span>
                 <span class="tb-id">{{ pane.id }}</span>
@@ -148,5 +152,13 @@ const isPaneLoading = (paneId) => LOADING_PHASES.has(store.panePhases[paneId])
     color: var(--danger);
 }
 
-.tb-dot { margin-right: 1px; }
+.tb-spinner {
+    margin-right: 1px;
+    color: var(--accent);
+    flex-shrink: 0;
+    animation: tb-spin 0.8s linear infinite;
+}
+@keyframes tb-spin {
+    to { transform: rotate(360deg); }
+}
 </style>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watchEffect } from 'vue'
+import { ref, reactive, onMounted, watchEffect } from 'vue'
 import {
     RefreshCw, Bell, Plus, X, ExternalLink, FolderOpen, Settings,
 } from 'lucide-vue-next'
@@ -27,10 +27,8 @@ const expanded  = reactive({})
 const refreshing = ref(false)
 const showPicker = ref(false)
 const width      = ref(300)
-let poll = null
 
-onMounted(() => { poll = store.startPolling(5000) })
-onUnmounted(() => clearInterval(poll))
+onMounted(() => { store.startPolling() })
 
 watchEffect(() => {
     document.documentElement.style.setProperty('--sidebar-width', width.value + 'px')
@@ -83,8 +81,6 @@ async function submitSettings() {
     const chat   = settings.telegramChatId.trim()
     if (!ollama) return
 
-    // Only send changed fields. null clears a field, an absent key keeps it:
-    // emptying a prefilled token/chat therefore erases it.
     const patch = {}
     if (ollama !== settings.initialOllamaUrl)         patch.ollama_base_url    = ollama
     if (token  !== settings.initialTelegramBotToken)  patch.telegram_bot_token = token || null
@@ -121,6 +117,7 @@ async function manualRefresh() {
 async function attach(sessionName, windowId, paneId) {
     try {
         await sessionsApi.attach(sessionName, windowId, paneId)
+        await store.load()
     } catch (e) {
         nStore.push('error', String(e))
     }
@@ -344,7 +341,6 @@ aside {
     flex-shrink: 0;
 }
 
-/* ── resize handle ── */
 .resize-handle {
     position: absolute;
     top: 0;
@@ -359,7 +355,6 @@ aside {
     background: var(--accent-border-faint);
 }
 
-/* ── header ── */
 header {
     display: flex;
     align-items: center;
@@ -368,62 +363,6 @@ header {
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
-@keyframes neon-flicker-rare {
-    /* стабильное свечение большую часть цикла */
-    0%    { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); transform: none; }
-    50%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-    /* одиночная быстрая искра */
-    50.3% { color: var(--text-subdued); text-shadow: none; transform: translateX(0.4px); }
-    50.6% { color: var(--char-color); text-shadow: 0 0 12px var(--char-color), 0 0 32px var(--char-glow); transform: none; }
-    51%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-    100%  { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); transform: none; }
-}
-
-@keyframes neon-flicker {
-    /* ── stable burn: двухслойное свечение, медленный пульс ── */
-    0%    { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); transform: none; }
-    3%    { color: var(--char-color); text-shadow: 0 0 8px var(--char-color), 0 0 26px var(--char-glow); }
-    7%    { color: var(--char-color); text-shadow: 0 0 5px var(--char-color), 0 0 14px var(--char-glow); }
-    12%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-
-    /* ── событие 1: одиночная искра ── */
-    20%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-    20.3% { color: var(--text-subdued); text-shadow: none; transform: translateX(0.4px); }
-    20.6% { color: var(--char-color); text-shadow: 0 0 10px var(--char-color), 0 0 30px var(--char-glow); transform: none; }
-    21%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-
-    /* ── стабильно ── */
-    35%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-    37%   { color: var(--char-color); text-shadow: 0 0 4px var(--char-glow); }
-    39%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-
-    /* ── событие 2: долгое отключение, борьба за запуск ── */
-    49%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-    49.5% { color: var(--text-subdued); text-shadow: none; }
-    50.2% { color: var(--char-color); text-shadow: 0 0 3px var(--char-glow); }
-    50.6% { color: var(--text-subdued); text-shadow: none; transform: translateX(-0.4px); }
-    51%   { color: var(--char-color); text-shadow: 0 0 3px var(--char-glow); transform: none; }
-    51.4% { color: var(--text-subdued); text-shadow: none; transform: translateX(0.3px); }
-    /* напряжение восстановилось — белый выброс ── */
-    51.9% { color: #fff; text-shadow: 0 0 4px #fff, 0 0 12px var(--char-color), 0 0 32px var(--char-glow); transform: none; }
-    52.4% { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-
-    /* ── стабильно ── */
-    66%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-
-    /* ── событие 3: двойной моргок ── */
-    66.3% { color: var(--text-subdued); text-shadow: none; transform: translateX(0.3px); }
-    66.6% { color: var(--char-color); text-shadow: 0 0 9px var(--char-color), 0 0 24px var(--char-glow); transform: none; }
-    66.9% { color: var(--text-subdued); text-shadow: none; }
-    67.2% { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-
-    /* ── медленный пульс к концу ── */
-    82%   { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); }
-    86%   { color: var(--char-color); text-shadow: 0 0 9px var(--char-color), 0 0 28px var(--char-glow); }
-    92%   { color: var(--char-color); text-shadow: 0 0 5px var(--char-color), 0 0 14px var(--char-glow); }
-    100%  { color: var(--char-color); text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow); transform: none; }
-}
-
 .title {
     flex: 1;
     font-size: var(--size-md);
@@ -435,52 +374,13 @@ header {
 .tc {
     display: inline-block;
     color: var(--char-color);
-    text-shadow: 0 0 6px var(--char-color), 0 0 18px var(--char-glow);
 }
 
-/* P */
-.tc:nth-child(1) { --char-color: #ff2244; --char-glow: rgba(255, 34,  68,.9); animation: neon-flicker-rare linear infinite; animation-duration: 28s; animation-delay: -4.0s; }
-/* R */
-.tc:nth-child(2) { --char-color: #ff6600; --char-glow: rgba(255,102,   0,.9); }
-/* O */
-.tc:nth-child(3) { --char-color: #ffcc00; --char-glow: rgba(255,204,   0,.9); }
-/* X */
-.tc:nth-child(4) { --char-color: #88ee00; --char-glow: rgba(136,238,   0,.9); animation: neon-flicker-rare linear infinite; animation-duration: 32s; animation-delay:-14.8s; }
-/* Y */
-.tc:nth-child(5) { --char-color: #00ff88; --char-glow: rgba(  0,255, 136,.9); }
-/* M */
-.tc:nth-child(6) { --char-color: #00ddff; --char-glow: rgba(  0,221, 255,.9); }
-/* I */
-.tc:nth-child(7) { --char-color: #4488ff; --char-glow: rgba( 68,136, 255,.9); }
-/* N */
-.tc:nth-child(8) { --char-color: #8844ff; --char-glow: rgba(136, 68, 255,.9); }
-/* D */
-.tc:nth-child(9) { --char-color: #dd44ff; --char-glow: rgba(221, 68, 255,.9); animation: neon-flicker-rare linear infinite; animation-duration: 24s; animation-delay: -6.5s; }
+.tc { color: var(--accent); }
 
-/* ── offline: трубки погашены ── */
-@keyframes neon-dead {
-    /* большую часть времени полностью мертва */
-    0%,   60% { color: var(--text-trace); text-shadow: none; }
-    /* редкая попытка зажечься — не хватает напряжения */
-    61%        { color: var(--text-subdued); text-shadow: none; }
-    61.4%      { color: var(--text-trace);   text-shadow: none; }
-    61.7%      { color: var(--text-muted);   text-shadow: none; }
-    62%        { color: var(--text-trace);   text-shadow: none; }
-    /* снова мертва */
-    62%, 100%  { color: var(--text-trace); text-shadow: none; }
-}
 .title--offline .tc {
-    animation: neon-dead linear infinite;
+    color: var(--text-trace);
 }
-.title--offline .tc:nth-child(1) { animation-duration: 11s; animation-delay: -1.2s; }
-.title--offline .tc:nth-child(2) { animation-duration: 17s; animation-delay: -5.8s; }
-.title--offline .tc:nth-child(3) { animation-duration:  9s; animation-delay: -3.1s; }
-.title--offline .tc:nth-child(4) { animation-duration: 14s; animation-delay: -7.4s; }
-.title--offline .tc:nth-child(5) { animation-duration: 12s; animation-delay: -0.9s; }
-.title--offline .tc:nth-child(6) { animation-duration: 19s; animation-delay: -4.5s; }
-.title--offline .tc:nth-child(7) { animation-duration:  8s; animation-delay: -2.3s; }
-.title--offline .tc:nth-child(8) { animation-duration: 16s; animation-delay: -6.1s; }
-.title--offline .tc:nth-child(9) { animation-duration: 10s; animation-delay: -8.7s; }
 
 .header-btns {
     display: flex;
@@ -513,7 +413,6 @@ header {
     pointer-events: none;
 }
 
-/* ── header button ── */
 .hbtn {
     background: none;
     border: none;
@@ -550,7 +449,6 @@ header {
     line-height: 1;
 }
 
-/* ── bottom bar ── */
 .bottom {
     margin-top: auto;
     border-top: 1px solid var(--border);
@@ -572,7 +470,6 @@ header {
     font-size: var(--size-base);
 }
 
-/* ── new session / settings form ── */
 .new-form {
     display: flex;
     flex-direction: column;
@@ -649,7 +546,6 @@ header {
     word-break: break-word;
 }
 
-/* ── status message ── */
 .msg {
     padding: 10px 16px;
     color: var(--text-dim);
@@ -668,7 +564,6 @@ li:last-child {
     border-bottom: none;
 }
 
-/* ── session row ── */
 .srow {
     display: flex;
     align-items: center;
@@ -697,7 +592,6 @@ li:last-child {
     white-space: nowrap;
 }
 
-/* ── tree ── */
 .tree {
     margin-left: 20px;
     border-left: 1px solid var(--border-dim);
@@ -747,7 +641,6 @@ li:last-child {
     opacity: 1;
 }
 
-/* ── pane sub-tree ── */
 .ptree {
     cursor: pointer;
     margin-left: 12px;
@@ -835,7 +728,6 @@ li:last-child {
     white-space: nowrap;
 }
 
-/* ── action buttons ── */
 .act {
     background: none;
     border: none;

@@ -24,9 +24,6 @@ async def chat(
     if options:
         payload["options"] = options
     if response_format is not None:
-        # Ollama structured outputs: a JSON schema (dict) or the string "json".
-        # Constrains generation at the grammar level — the model cannot emit
-        # text outside the schema, which is critical for small (7-14B) models.
         payload["format"] = response_format
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(f"{_base_url()}/api/chat", json=payload)

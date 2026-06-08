@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""Fake Claude Code REPL — local stand-in for testing the orchestrator
-without burning real model calls.
-
-Renames its own process to "claude" via prctl so the sessions panel
-(which filters by pane_current_command == "claude") picks it up.
-
-Run inside a tmux pane:
-    python tools/fake_claude.py [scenario]
-
-Scenarios (each is a sequence of scenes played one per orchestrator step):
-    mixed         (default) rotates yesno / menu / open / normal / error
-    next_step     every step succeeds cleanly
-    yesno         classic (y/n) confirmation
-    menu          Claude Code style permission menu (boxed, numbered)
-    open          open-ended question with no options
-    error         step crashes with a traceback
-    working_long  extended spinner before completion
-    permission_chain  two permission menus in a row
-"""
 import ctypes
 import ctypes.util
 import os
@@ -26,31 +7,36 @@ import sys
 import time
 
 
-# ── make tmux report process name as "claude" ─────────────────────
 def _set_proc_name(name: str) -> None:
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c"))
-        libc.prctl(15, name.encode(), 0, 0, 0)  # PR_SET_NAME = 15
+        libc.prctl(15, name.encode(), 0, 0, 0)
     except Exception:
         pass
 
 
 _set_proc_name("claude")
 
-
-# ── ANSI helpers ─────────────────────────────────────────────────
-DIM    = "\033[2m"
-BOLD   = "\033[1m"
-CYAN   = "\033[36m"
-GREEN  = "\033[32m"
+DIM = "\033[2m"
+BOLD = "\033[1m"
+CYAN = "\033[36m"
+GREEN = "\033[32m"
 YELLOW = "\033[33m"
-RED    = "\033[31m"
-BLUE   = "\033[34m"
-RESET  = "\033[0m"
+RED = "\033[31m"
+BLUE = "\033[34m"
+RESET = "\033[0m"
 
 VERBS = [
-    "Cogitating", "Pondering", "Synthesizing", "Musing", "Reasoning",
-    "Contemplating", "Reflecting", "Deliberating", "Wrangling", "Brewing",
+    "Cogitating",
+    "Pondering",
+    "Synthesizing",
+    "Musing",
+    "Reasoning",
+    "Contemplating",
+    "Reflecting",
+    "Deliberating",
+    "Wrangling",
+    "Brewing",
 ]
 
 SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -119,10 +105,6 @@ def read_line() -> str:
         sys.exit(0)
 
 
-# ── scenes ───────────────────────────────────────────────────────
-# Each scene reacts to ONE incoming step prompt. It may also block on
-# additional input() if the scene asks the user something mid-step.
-
 def scene_normal_step() -> None:
     spinner(2.5)
     tool_call("Read", "package.json")
@@ -131,7 +113,9 @@ def scene_normal_step() -> None:
     tool_call("Edit", "src/handler.ts")
     tool_out("8 insertions, 2 deletions")
     write("\n")
-    bullet("Done. Added the requested handler — endpoint returns the new payload format.")
+    bullet(
+        "Done. Added the requested handler — endpoint returns the new payload format."
+    )
 
 
 def scene_yesno() -> None:
@@ -257,17 +241,21 @@ def scene_double_menu() -> None:
         bullet("Staged, but skipped the commit.")
 
 
-# ── scenarios ────────────────────────────────────────────────────
-
 SCENARIOS: dict[str, list] = {
-    "mixed":             [scene_normal_step, scene_yesno, scene_menu, scene_open, scene_normal_step],
-    "next_step":         [scene_normal_step] * 5,
-    "yesno":             [scene_yesno, scene_normal_step],
-    "menu":              [scene_menu, scene_normal_step],
-    "open":              [scene_open, scene_normal_step],
-    "error":             [scene_normal_step, scene_error],
-    "working_long":      [scene_working_long, scene_normal_step],
-    "permission_chain":  [scene_double_menu, scene_normal_step],
+    "mixed": [
+        scene_normal_step,
+        scene_yesno,
+        scene_menu,
+        scene_open,
+        scene_normal_step,
+    ],
+    "next_step": [scene_normal_step] * 5,
+    "yesno": [scene_yesno, scene_normal_step],
+    "menu": [scene_menu, scene_normal_step],
+    "open": [scene_open, scene_normal_step],
+    "error": [scene_normal_step, scene_error],
+    "working_long": [scene_working_long, scene_normal_step],
+    "permission_chain": [scene_double_menu, scene_normal_step],
 }
 
 
@@ -275,7 +263,9 @@ def main() -> None:
     scenario = sys.argv[1] if len(sys.argv) > 1 else "mixed"
     scenes = SCENARIOS.get(scenario)
     if scenes is None:
-        write(f"{RED}unknown scenario '{scenario}'. available: {', '.join(SCENARIOS)}{RESET}\n")
+        write(
+            f"{RED}unknown scenario '{scenario}'. available: {', '.join(SCENARIOS)}{RESET}\n"
+        )
         sys.exit(2)
 
     write(f"{DIM}(fake claude — scenario: {scenario}){RESET}\n")
@@ -292,7 +282,9 @@ def main() -> None:
             write("bye.\n")
             sys.exit(0)
         if line == "/help":
-            write(f"{DIM}commands: /exit, /help. just type a prompt and I'll play the next scene.{RESET}\n")
+            write(
+                f"{DIM}commands: /exit, /help. just type a prompt and I'll play the next scene.{RESET}\n"
+            )
             prompt()
             continue
 

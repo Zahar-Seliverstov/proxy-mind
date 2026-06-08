@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from schemas import tmux_schema
 from services import tmux
+from ._broadcast import broadcast_tree
 
 router = APIRouter(prefix="/panes")
 
@@ -8,7 +9,10 @@ router = APIRouter(prefix="/panes")
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_pane(schema: tmux_schema.CreatePane):
     try:
-        pane = await tmux.panes.create(schema.window_id, schema.vertical, schema.start_directory)
+        pane = await tmux.panes.create(
+            schema.window_id, schema.vertical, schema.start_directory
+        )
+        broadcast_tree()
         return {"pane": pane}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -18,6 +22,7 @@ async def create_pane(schema: tmux_schema.CreatePane):
 async def remove_pane(pane_id: str):
     try:
         await tmux.panes.remove(pane_id)
+        broadcast_tree()
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
@@ -44,6 +49,8 @@ async def send_text(pane_id: str, schema: tmux_schema.SendText):
 async def send_key(pane_id: str, schema: tmux_schema.SendKey):
     try:
         await tmux.panes.send_key(pane_id, schema.key)
-        return {"message": f"Клавиша '{schema.key}' успешно отправлена в панель '{pane_id}'."}
+        return {
+            "message": f"Клавиша '{schema.key}' успешно отправлена в панель '{pane_id}'."
+        }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

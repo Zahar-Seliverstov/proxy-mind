@@ -40,9 +40,19 @@ class SendText(BaseModel):
 
 
 _ALLOWED_KEYS = {
-    "Enter", "Escape", "Tab", "BSpace",
-    "Space", "Up", "Down", "Left", "Right",
-    "C-c", "C-z", "C-d", "C-l",
+    "Enter",
+    "Escape",
+    "Tab",
+    "BSpace",
+    "Space",
+    "Up",
+    "Down",
+    "Left",
+    "Right",
+    "C-c",
+    "C-z",
+    "C-d",
+    "C-l",
 }
 
 

@@ -23,7 +23,6 @@ body {
     position: relative;
 }
 
-/* CRT scanlines */
 #app::after {
     content: '';
     position: fixed;
@@ -39,7 +38,6 @@ body {
     z-index: var(--z-scanlines);
 }
 
-/* Neon scrollbar */
 ::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-dim); border-radius: 2px; }

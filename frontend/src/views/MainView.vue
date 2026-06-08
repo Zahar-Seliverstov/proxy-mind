@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import SessionsPanel from '../components/SessionsPanel.vue'
 import NotificationPanel from '../components/NotificationPanel.vue'
 import ToastStack from '../components/ToastStack.vue'
@@ -8,8 +8,13 @@ import PaneWorkspace from '../components/PaneWorkspace.vue'
 import GridBackground from '../components/GridBackground.vue'
 import { useSessionsStore } from '../stores/sessions.js'
 import { useResize } from '../composables/useResize.js'
+import { useWebSocket } from '../composables/useWebSocket.js'
 
 const store = useSessionsStore()
+
+onMounted(() => {
+    useWebSocket().start()
+})
 
 const workspaceWidth = ref(null)
 const startResize = useResize(workspaceWidth, { min: 320 })
@@ -26,7 +31,7 @@ function onPaneLoading(paneId, val) {
         <NotificationPanel />
 
         <div class="workspace" :style="workspaceWidth ? { width: workspaceWidth + 'px', flex: 'none' } : {}">
-            <TabBar />
+            <TabBar v-if="store.openedPaneIds.length" />
             <div class="workspace-body">
                 <GridBackground :loading="isLoading" />
                 <template v-if="store.openedPaneIds.length">

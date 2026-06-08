@@ -33,7 +33,9 @@ async def questions(body: QuestionsRequest):
         history = [h.model_dump() for h in body.history]
         return await ai.get_next_question(body.prompt, body.mode, body.model, history)
     except Exception as e:
-        logger.exception("questions failed — model={} history_len={}", body.model, len(body.history))
+        logger.exception(
+            "questions failed — model={} history_len={}", body.model, len(body.history)
+        )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
@@ -42,14 +44,21 @@ async def generate(body: GenerateRequest):
     try:
         return await ai.generate(body.prompt, body.mode, body.model, body.answers)
     except Exception as e:
-        logger.exception("generate failed — model={} mode={} answers={}", body.model, body.mode, body.answers)
+        logger.exception(
+            "generate failed — model={} mode={} answers={}",
+            body.model,
+            body.mode,
+            body.answers,
+        )
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)
 async def run(body: RunRequest):
     try:
-        prompts = await ai.translate_prompts(body.mode, body.model, body.content, body.steps)
+        prompts = await ai.translate_prompts(
+            body.mode, body.model, body.content, body.steps
+        )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
     try:
@@ -61,7 +70,9 @@ async def run(body: RunRequest):
 @router.post("/analyze", status_code=status.HTTP_200_OK, response_model=AnalyzeResponse)
 async def analyze(body: AnalyzeRequest):
     try:
-        return await ai.analyze(body.pane_text, body.current_step, body.remaining_steps, body.model)
+        return await ai.analyze(
+            body.pane_text, body.current_step, body.remaining_steps, body.model
+        )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 

@@ -9,6 +9,7 @@ import PulseDot from './PulseDot.vue'
 import { useNotificationsStore } from '../stores/notifications.js'
 import * as aiApi from '../api/ai.js'
 import TopBar from './TopBar.vue'
+import { useWebSocket } from '../composables/useWebSocket.js'
 
 const nStore = useNotificationsStore()
 
@@ -22,44 +23,66 @@ const state     = ref(null)
 const acting    = ref(false)
 const openSteps = ref(new Set())
 
-const POLL_MS = 1000
-let pollTimer = null
+const ws = useWebSocket()
+let _offStatus = null
+let _offEvent  = null
+let _offInit   = null
 
-async function poll() {
-    let snap
-    try {
-        snap = await aiApi.getRun(props.paneId)
-    } catch {
-        return  // временная сетевая ошибка — попробуем на следующем тике
-    }
-    if (snap === null) {
+function _applySnapshot(snap) {
+    if (!snap) {
         state.value = null
         emit('gone')
         return
     }
     state.value = snap
-    if (['done', 'error', 'stopped'].includes(snap.status)) {
-        stopPolling()
+}
+
+function _applyEvent(msg) {
+    if (!state.value) return
+    const entry = { ...msg.entry }
+
+    const log = state.value.log ?? []
+
+    if (entry.seq != null && log.some(e => e.seq === entry.seq)) return
+    if (entry.seq == null && log.some(e => e.at === entry.at && e.step_index === entry.step_index)) return
+    state.value = {
+        ...state.value,
+        step_index:    msg.step_index ?? state.value.step_index,
+        status:        msg.status     ?? state.value.status,
+        log:           [...log, entry],
+        last_decision: entry,
     }
 }
 
-function startPolling() {
-    stopPolling()
-    poll()
-    pollTimer = setInterval(poll, POLL_MS)
+function subscribe() {
+    unsubscribe()
+    _offStatus = ws.on('run:status', (msg) => {
+        if (msg.pane_id !== props.paneId) return
+        _applySnapshot(msg.snapshot ?? null)
+    })
+    _offEvent = ws.on('run:event', (msg) => {
+        if (msg.pane_id !== props.paneId) return
+        _applyEvent(msg)
+    })
+
+    _offInit = ws.on('init', (msg) => {
+        _applySnapshot(msg.runs?.[props.paneId] ?? null)
+    })
+    aiApi.getRun(props.paneId).then(_applySnapshot).catch(() => {})
 }
 
-function stopPolling() {
-    clearInterval(pollTimer)
-    pollTimer = null
+function unsubscribe() {
+    _offStatus?.(); _offStatus = null
+    _offEvent?.();  _offEvent  = null
+    _offInit?.();   _offInit   = null
 }
 
-onMounted(startPolling)
-onUnmounted(stopPolling)
+onMounted(subscribe)
+onUnmounted(unsubscribe)
 watch(() => props.paneId, () => {
     state.value = null
     openSteps.value = new Set()
-    startPolling()
+    subscribe()
 })
 
 const status       = computed(() => state.value?.status ?? 'loading')
@@ -300,7 +323,6 @@ async function onCancel() {
     padding: 24px;
 }
 
-/* status word in the top bar — colour carries the meaning */
 .rm-status { color: var(--text-faint); }
 .rm-status--running     { color: var(--accent); }
 .rm-status--done        { color: var(--ok); }
@@ -308,7 +330,6 @@ async function onCancel() {
 .rm-status--user_paused { color: var(--warn); }
 .rm-status--stopped     { color: var(--text-dim); }
 
-/* ── step list ── */
 .rm-steps {
     display: flex;
     flex-direction: column;
@@ -371,7 +392,6 @@ async function onCancel() {
     overflow-wrap: normal !important;
 }
 
-/* ── error card ── */
 .rm-card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -396,7 +416,6 @@ async function onCancel() {
     word-break: break-word;
 }
 
-/* ── log ── */
 .rm-log {
     display: flex;
     flex-direction: column;

@@ -232,7 +232,6 @@ const startResize = useResize(panelWidth, { min: 200, max: 600 })
     opacity: 0;
 }
 
-/* Inner content fades in after width opens, hides instantly on close */
 .np-enter-from .np-inner { opacity: 0; }
 .np-enter-active .np-inner { transition: opacity 0.18s ease 0.15s; }
 .np-leave-active .np-inner { opacity: 0; }

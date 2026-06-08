@@ -5,7 +5,6 @@ from clients.telegram import client as telegram_client
 
 
 async def notify(text: str) -> None:
-    """Send a Telegram notification. Silently skips if credentials are not configured."""
     settings = config.get()
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
         return

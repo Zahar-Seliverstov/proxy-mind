@@ -24,5 +24,6 @@ REPORT_CONTENT.md
 screenshots/
 .playwright-mcp/
 .claude/
-logs/
+backend/logs/
 presentation/
+pres/

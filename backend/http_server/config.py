@@ -23,7 +23,9 @@ def _read(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        logger.warning("Не удалось прочитать {}, используются значения по умолчанию.", path)
+        logger.warning(
+            "Не удалось прочитать {}, используются значения по умолчанию.", path
+        )
         return {}
 
 
@@ -40,10 +42,7 @@ def get() -> Settings:
 
 
 def update(patch: dict[str, Any]) -> Settings:
-    # Every key present in `patch` overrides the stored value — including an
-    # explicit None, which clears the field. Callers must therefore pass only
-    # the keys the user actually changed (the router uses exclude_unset), so a
-    # missing key keeps its current value while None erases it.
+
     merged = {**_read(SETTINGS_PATH), **patch}
     settings = Settings(**merged)
     _write(SETTINGS_PATH, settings.model_dump())

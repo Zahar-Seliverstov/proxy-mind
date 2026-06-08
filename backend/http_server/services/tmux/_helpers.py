@@ -14,6 +14,12 @@ def find_window(server: libtmux.Server, window_id: str):
 
 def find_pane(server: libtmux.Server, pane_id: str):
     return next(
-        (p for s in server.sessions for w in s.windows for p in w.panes if p.pane_id == pane_id),
+        (
+            p
+            for s in server.sessions
+            for w in s.windows
+            for p in w.panes
+            if p.pane_id == pane_id
+        ),
         None,
     )

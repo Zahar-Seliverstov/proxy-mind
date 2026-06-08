@@ -9,7 +9,7 @@ const props = defineProps({
 const emit = defineEmits(['update:steps', 'run', 'regenerate'])
 
 const dragIndex = ref(null)
-const overGap   = ref(null)   // insertion point: 0..steps.length ("before card N")
+const overGap   = ref(null)
 const isDragging = computed(() => dragIndex.value !== null)
 const hasContent = computed(() => props.steps.some(s => s.trim()))
 
@@ -29,8 +29,7 @@ function onCardMouseDown(e) {
 function onDragStart(i, e) { dragIndex.value = i; e.dataTransfer.effectAllowed = 'move' }
 function onDragOver(i, e) {
     e.preventDefault()
-    // Insert before or after the hovered card depending on which half the
-    // cursor is in — so the highlighted gap is exactly where the item lands.
+
     const r = e.currentTarget.getBoundingClientRect()
     overGap.value = e.clientY > r.top + r.height / 2 ? i + 1 : i
 }
@@ -38,7 +37,7 @@ function onDrop() {
     const from = dragIndex.value
     let to = overGap.value
     if (from === null || to === null) return
-    if (to > from) to -= 1   // removing the source shifts everything after it up
+    if (to > from) to -= 1
     if (to === from) return
     const arr = [...props.steps]
     const [item] = arr.splice(from, 1)
@@ -47,8 +46,6 @@ function onDrop() {
 }
 function onDragEnd() { dragIndex.value = null; overGap.value = null }
 
-// Which edge of card i (if any) shows the insertion line. The two gaps that
-// touch the dragged card are no-ops, so no indicator is drawn there.
 function dropEdge(i) {
     if (dragIndex.value === null || overGap.value === null) return null
     if (overGap.value === dragIndex.value || overGap.value === dragIndex.value + 1) return null
@@ -156,7 +153,6 @@ function dropEdge(i) {
     pointer-events: none;
 }
 
-/* ── insert zone ── */
 .pr-insert {
     position: relative;
     height: 18px;
@@ -196,7 +192,6 @@ function dropEdge(i) {
 .pr-insert:hover .pr-insert-btn { opacity: 1; }
 .pr-insert-btn:hover { background: var(--accent-bg-hover); }
 
-/* ── card ── */
 .pr-card {
     position: relative;
     z-index: 1;
@@ -211,7 +206,7 @@ function dropEdge(i) {
     flex-shrink: 0;
 }
 .pr-card--dragging { opacity: 0.35; }
-/* insertion line on the edge where the dragged card will land */
+
 .pr-card--drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .pr-card--drop-after  { box-shadow: inset 0 -2px 0 var(--accent); }
 
@@ -268,7 +263,6 @@ function dropEdge(i) {
     background: var(--danger-bg);
 }
 
-/* ── run button ── */
 .pr-run-zone {
     padding: 10px 0 6px;
     flex-shrink: 0;
@@ -276,7 +270,6 @@ function dropEdge(i) {
     gap: 8px;
 }
 
-/* ── empty state ── */
 .pr-empty {
     flex: 1;
     display: flex;

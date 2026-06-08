@@ -1,9 +1,10 @@
 import json
 import re
+
+from loguru import logger
+
 from clients.ollama import client as ollama_client
 
-# Qwen leaks training-data tokens and CJK text into structured-output fields.
-# Any of these patterns in a question/option means the model hallucinated.
 _GARBAGE_RE = re.compile(r"<\|im_|[一-鿿぀-ヿ가-힯]")
 
 
@@ -24,16 +25,6 @@ def _extract_obj(raw: str) -> dict | None:
 def _extract_arr(raw: str) -> list | None:
     return _extract_json(raw, "[", "]")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# JSON schemas for Ollama structured outputs.
-#
-# Passed as `response_format` — Ollama constrains generation at the grammar
-# level, so the model physically cannot emit text outside the schema. This is
-# the main reliability lever for small (7-14B) models: instead of begging the
-# model to "return only JSON", the structure is guaranteed and the prompt is
-# free to focus entirely on the QUALITY of the content.
-# ─────────────────────────────────────────────────────────────────────────────
 
 _VALIDATE_SCHEMA = {
     "type": "object",
@@ -107,18 +98,6 @@ _REPLY_SCHEMA = {
 
 _TRANSLATE_ARRAY_SCHEMA = {"type": "array", "items": {"type": "string"}}
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# System prompts.
-#
-# Written in ENGLISH because coder-tuned models (qwen2.5-coder et al.) follow
-# English instructions more reliably than Russian ones. Every prompt that
-# produces user-facing text states explicitly that the OUTPUT must be Russian.
-# Kept short and scannable: small models lose instructions buried in the middle
-# of long text, so the rules sit at the top and the language requirement at the
-# very bottom (recency), with one worked example as the anchor.
-# ─────────────────────────────────────────────────────────────────────────────
-
 MODES = {
     "plan": {
         "label": "Auto Plan",
@@ -171,11 +150,11 @@ MODES = {
             "если файла нет — отвечать 'расписание не загружено'\","
             '"avoid":"команду редактирования, валидацию формата, разбиение по дням",'
             '"check":"положить файл с одной записью — бот её возвращает; удалить '
-            'файл — бот пишет \'расписание не загружено\'"}\n'
+            "файл — бот пишет 'расписание не загружено'\"}\n"
             "]\n\n"
             "── BAD EXAMPLE (do NOT do this) ─────────────────────────────────────\n"
             '[{"state":"ничего нет","task":"создать бота с /schedule, читающим '
-            "расписание из файла и шлющим его в 08:00\",\"avoid\":\"—\",\"check\":\"—\"}]\n"
+            'расписание из файла и шлющим его в 08:00","avoid":"—","check":"—"}]\n'
             "Why bad: four capabilities crammed into one step — the assistant builds "
             "everything at once, no intermediate check is possible.\n\n"
             "── LANGUAGE ─────────────────────────────────────────────────────────\n"
@@ -342,7 +321,7 @@ _ANALYZE_SYSTEM = (
     "done      — finished and waiting at the prompt. Remaining steps == 0.\n"
     "error     — crashed: traceback, fatal error, process exited abnormally.\n"
     "ask_user  — waiting for input from the user. Fill payload:\n"
-    '              question — gist of the prompt, short, in RUSSIAN.\n'
+    "              question — gist of the prompt, short, in RUSSIAN.\n"
     '              kind     — "yesno" | "choice" | "open".\n'
     '              options  — [{"label":"...","value":"<chars to type>"}].\n\n'
     "── CHOOSING kind ────────────────────────────────────────────────────\n"
@@ -352,7 +331,7 @@ _ANALYZE_SYSTEM = (
     '{"label":"no","value":"n"}].\n'
     "choice — pick one of several genuinely different options ('which one', "
     "not 'do it or not').\n"
-    '         one option per menu item, value = the number as a string '
+    "         one option per menu item, value = the number as a string "
     '("1","2",…).\n'
     "open   — waits for free text. options = [].\n\n"
     "── PRIORITY ─────────────────────────────────────────────────────────\n"
@@ -401,7 +380,7 @@ _AUTO_REPLY_SYSTEM = (
     "  Pick the option closest to the step's goal.\n"
     '  OK: {"text":"1"}   NOT: {"text":"Yes"}\n\n'
     "kind == open:\n"
-    '  The CLI wants free text. Give a short concrete answer in ENGLISH '
+    "  The CLI wants free text. Give a short concrete answer in ENGLISH "
     "(1-5 words), based on the step's goal.\n"
     '  OK (asked for a module name): {"text":"auth"}   NOT: {"text":"1"}\n\n'
     "No explanations, no reasoning, no fields other than 'text'."
@@ -426,12 +405,12 @@ async def decide_reply(
         "",
         "CLI question:",
         ask.get("question", ""),
-        f'kind: {ask.get("kind", "open")}',
+        f"kind: {ask.get('kind', 'open')}",
     ]
     if ask.get("options"):
         lines.append("Options:")
         lines.extend(
-            f'  - label="{o.get("label","")}", value="{o.get("value","")}"'
+            f'  - label="{o.get("label", "")}", value="{o.get("value", "")}"'
             for o in ask["options"]
         )
     lines += [
@@ -464,14 +443,15 @@ async def decide_reply(
                 if t in ("n", "no", "нет"):
                     return "n"
             elif kind == "choice":
-                valid = {str(o.get("value", "")).strip() for o in ask.get("options", [])}
+                valid = {
+                    str(o.get("value", "")).strip() for o in ask.get("options", [])
+                }
                 if text in valid:
                     return text
-            else:
+            elif not _GARBAGE_RE.search(text):
                 return text
-    # фолбэк
     if kind == "yesno":
-        return "y"
+        return "n"
     if kind == "choice" and ask.get("options"):
         return str(ask["options"][0].get("value") or "1")
     return ""
@@ -480,7 +460,7 @@ async def decide_reply(
 async def validate(prompt: str, mode: str, model: str) -> dict:
     messages = [
         {"role": "system", "content": _VALIDATE_SYSTEM},
-        {"role": "user",   "content": prompt},
+        {"role": "user", "content": prompt},
     ]
     response = await ollama_client.chat(
         model,
@@ -494,6 +474,10 @@ async def validate(prompt: str, mode: str, model: str) -> dict:
         if status == "low_info" and mode != "plan":
             status = "ok"
         return {"status": status}
+
+    logger.warning(
+        "validate: модель вернула невалидный статус {!r}, fallback → ok", status
+    )
     return {"status": "ok"}
 
 
@@ -548,7 +532,6 @@ def _parse_analyze(raw: str) -> dict:
 
 
 def is_fallback(result: dict) -> bool:
-    """True if `result` is a parse-failure fallback rather than a real model decision."""
     return bool(result.get("_fallback"))
 
 
@@ -566,7 +549,9 @@ def _ask_fallback(reason: str) -> dict:
 
 
 def _normalize_ask_payload(payload: dict) -> dict:
-    question = str(payload.get("question") or "").strip() or "CLI ждёт ввода — что отправить?"
+    question = (
+        str(payload.get("question") or "").strip() or "CLI ждёт ввода — что отправить?"
+    )
     kind = payload.get("kind") if payload.get("kind") in _VALID_ASK_KINDS else "open"
     raw_options = payload.get("options") or []
     options: list[dict] = []
@@ -588,7 +573,9 @@ def _normalize_ask_payload(payload: dict) -> dict:
     }
 
 
-async def get_next_question(prompt: str, mode: str, model: str, history: list[dict]) -> dict:
+async def get_next_question(
+    prompt: str, mode: str, model: str, history: list[dict]
+) -> dict:
     mode_hint = MODES.get(mode, {}).get("description", "")
     lines = []
     if mode_hint:
@@ -602,9 +589,13 @@ async def get_next_question(prompt: str, mode: str, model: str, history: list[di
             if answer:
                 lines.append(f"A: {answer}")
             else:
-                lines.append("A: [SKIPPED — user chose not to answer, do not ask this again]")
+                lines.append(
+                    "A: [SKIPPED — user chose not to answer, do not ask this again]"
+                )
     else:
-        lines.append("\n[History is empty — this is the first question. 'done' must be false.]")
+        lines.append(
+            "\n[History is empty — this is the first question. 'done' must be false.]"
+        )
     messages = [
         {"role": "system", "content": _NEXT_QUESTION_SYSTEM},
         {"role": "user", "content": "\n".join(lines)},
@@ -618,11 +609,15 @@ async def get_next_question(prompt: str, mode: str, model: str, history: list[di
     return {"question": _parse_single_question(response["message"]["content"])}
 
 
-async def generate(prompt: str, mode: str, model: str, answers: list[str] | None = None) -> dict:
+async def generate(
+    prompt: str, mode: str, model: str, answers: list[str] | None = None
+) -> dict:
     system = MODES[mode]["system"]
     user_content = prompt
     if answers:
-        user_content = f"{prompt}\n\nAdditional clarifications:\n" + "\n".join(f"- {a}" for a in answers)
+        user_content = f"{prompt}\n\nAdditional clarifications:\n" + "\n".join(
+            f"- {a}" for a in answers
+        )
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
@@ -715,13 +710,14 @@ def _parse_single_question(raw: str) -> dict | None:
     return None
 
 
-_PLAN_TEMPLATE = "Состояние: {state}. Задача: {task}. Не делать: {avoid}. Проверка: {check}."
+_PLAN_TEMPLATE = (
+    "Состояние: {state}. Задача: {task}. Не делать: {avoid}. Проверка: {check}."
+)
 
 
 def _parse_plan(raw: str) -> list[str]:
     arr = _extract_arr(raw.strip())
     if arr is None:
-        # extreme fallback: model ignored the schema — treat lines as steps
         arr = [
             line.strip().lstrip("0123456789.-) ")
             for line in raw.splitlines()

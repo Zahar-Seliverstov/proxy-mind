@@ -8,15 +8,23 @@ def browse(path: str | None, kind: str) -> dict:
 
     items = []
     try:
-        for entry in sorted(base.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())):
-            if entry.name.startswith('.'):
+        for entry in sorted(
+            base.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())
+        ):
+            if entry.name.startswith("."):
                 continue
             is_dir = entry.is_dir()
             if kind == "dir" and not is_dir:
                 continue
             if kind == "file" and is_dir:
                 continue
-            items.append({"name": entry.name, "path": str(entry), "type": "dir" if is_dir else "file"})
+            items.append(
+                {
+                    "name": entry.name,
+                    "path": str(entry),
+                    "type": "dir" if is_dir else "file",
+                }
+            )
     except PermissionError:
         pass
 

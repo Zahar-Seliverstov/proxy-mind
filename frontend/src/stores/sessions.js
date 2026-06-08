@@ -4,6 +4,7 @@ import * as sessionsApi from '../api/tmux/sessions.js'
 import * as windowsApi  from '../api/tmux/windows.js'
 import * as panesApi    from '../api/tmux/panes.js'
 import { useNotificationsStore } from './notifications.js'
+import { useWebSocket } from '../composables/useWebSocket.js'
 
 const ALLOWED_COMMANDS = ['claude', 'python', 'python3']
 export const isPaneAvailable = (p) => ALLOWED_COMMANDS.includes(p?.command)
@@ -41,19 +42,23 @@ export const useSessionsStore = defineStore('sessions', () => {
             activeTabPaneId.value = openedPaneIds.value[Math.max(0, idx - 1)] ?? null
     }
 
+    function _applyTree(newSessions) {
+        sessions.value = newSessions
+        const valid = new Set(
+            newSessions.flatMap(s => s.windows).flatMap(w => w.panes)
+                .filter(isPaneAvailable).map(p => p.id)
+        )
+        openedPaneIds.value = openedPaneIds.value.filter(id => valid.has(id))
+        if (activeTabPaneId.value && !valid.has(activeTabPaneId.value))
+            activeTabPaneId.value = openedPaneIds.value.at(-1) ?? null
+        serverOnline.value = true
+    }
+
     async function load() {
         loading.value = true
         try {
-            sessions.value = await sessionsApi.getAll()
-            // drop tabs whose panes disappeared or became unavailable
-            const valid = new Set(
-                sessions.value.flatMap(s => s.windows).flatMap(w => w.panes)
-                    .filter(isPaneAvailable).map(p => p.id)
-            )
-            openedPaneIds.value = openedPaneIds.value.filter(id => valid.has(id))
-            if (activeTabPaneId.value && !valid.has(activeTabPaneId.value))
-                activeTabPaneId.value = openedPaneIds.value.at(-1) ?? null
-            serverOnline.value = true
+            const tree = await sessionsApi.getAll()
+            _applyTree(tree)
             return true
         } catch (e) {
             serverOnline.value = false
@@ -67,6 +72,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     async function act(fn, successMsg = null) {
         try {
             await fn()
+
+            await new Promise(r => setTimeout(r, 200))
             await load()
             if (successMsg) useNotificationsStore().push('success', successMsg)
         } catch (e) {
@@ -74,9 +81,20 @@ export const useSessionsStore = defineStore('sessions', () => {
         }
     }
 
-    function startPolling(interval = 2000) {
+    let _offWsInit = null
+    let _offWsTree = null
+    let _pollTimer = null
+
+    function startPolling() {
+
+        _offWsInit?.(); _offWsTree?.()
+        clearInterval(_pollTimer)
+        const ws = useWebSocket()
+        _offWsInit = ws.on('init',      (msg) => { if (msg.sessions) _applyTree(msg.sessions) })
+        _offWsTree = ws.on('tmux:tree', (msg) => { _applyTree(msg.sessions) })
         load()
-        return setInterval(load, interval)
+
+        _pollTimer = setInterval(load, 8000)
     }
 
     function setPanePhase(paneId, phase) {
