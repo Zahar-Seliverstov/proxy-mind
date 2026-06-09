@@ -1,112 +1,102 @@
 # ProxyMind
 
-**ProxyMind** — веб-интерфейс для автоматизированного управления AI-ассистентами кода (Claude Code, Aider и др.), работающими в терминальных сессиях tmux.
+Веб-интерфейс для автоматизированного управления AI-ассистентами кода (Claude Code, Aider и др.), работающими в tmux-сессиях. Пользователь формулирует задачу в браузере — система разбивает её на шаги и последовательно выполняет через CLI-ассистент без ручного вмешательства.
 
-## Что это такое
+## Требования
 
-Вместо того чтобы вручную копировать промпты в терминал, следить за выводом и отвечать на вопросы CLI — ProxyMind делает это за вас. Вы формулируете задачу в браузере, система разбивает её на шаги и последовательно выполняет их через AI-ассистент.
-
-```
-Браузер (Vue 3)  ──►  Backend (FastAPI)  ──►  Ollama (LLM)
-                              │
-                              ▼
-                         tmux (libtmux)
-                              │
-                              ▼
-                     Claude Code / Aider
-```
-
-## Возможности
-
-- **Auto Plan** — AI разбивает задачу на 3–8 проверяемых шагов, задаёт уточняющие вопросы перед стартом
-- **Rewrite** — AI переформулирует размытый промпт чётко и однозначно
-- **Direct** — промпт переводится на английский и отправляется как есть
-- **Manual Plan** — вы пишете шаги сами, система переводит и выполняет по очереди
-- **Оркестратор** — автоматически отвечает на вопросы CLI (y/n, выбор меню), определяет зависания
-- **RunMonitor** — лог выполнения в реальном времени, пауза / продолжение / отмена
-- **Telegram-уведомления** — опционально, при завершении задачи
-
-## Стек технологий
-
-| Слой | Технологии |
+| Компонент | Версия |
 |---|---|
-| Frontend | Vue 3, Vite, Pinia, Axios |
-| Backend | Python 3.10+, FastAPI, uvicorn |
-| AI-интеграция | Ollama REST API (qwen2.5-coder:14b) |
-| Терминал | libtmux |
-| Уведомления | Telegram Bot API |
+| ОС | Linux |
+| Python | 3.10 и выше |
+| Node.js | 18 и выше |
+| tmux | 3.0 и выше |
+| [Ollama](https://ollama.com) | последняя |
+| RAM | от 8 ГБ (модель 7b) / от 16 ГБ (модель 14b) |
 
-## Быстрый старт
-
-### Требования
-
-- Python 3.10+
-- Node.js 18+
-- tmux
-- [Ollama](https://ollama.com) с моделью `qwen2.5-coder:14b`
-
-### Установка
+## Установка
 
 ```bash
-# Backend
+# 1. Клонировать репозиторий
+git clone <url> proxy-mind
+cd proxy-mind
+
+# 2. Python-окружение (backend)
 cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cd ..
 
-# Frontend
+# 3. Node.js-зависимости (frontend)
 cd frontend
 npm install
+cd ..
+
+# 4. Скачать AI-модель (выполняется один раз)
+ollama pull qwen2.5-coder:14b
 ```
 
-### Запуск
+## Запуск
 
+Открыть **два терминала** в папке проекта:
+
+**Терминал 1 — backend (порт 3000):**
 ```bash
-# Терминал 1 — backend (порт 3000)
 cd backend && ./start.sh
+```
 
-# Терминал 2 — frontend (порт 5173)
+**Терминал 2 — frontend (порт 5173):**
+```bash
 cd frontend && npm run dev
 ```
 
 Открыть браузер: **http://localhost:5173**
 
-### Telegram-бот (опционально)
+> Ollama должна быть запущена до старта backend: `ollama serve`
+
+## Запуск тестов
 
 ```bash
-cd backend && ./start_telegram.sh
+cd backend
+.venv/bin/python -m pytest -v
 ```
 
-Настроить токен и chat_id через кнопку ⚙️ в интерфейсе.
+54 unit-теста покрывают: очистку ANSI-вывода терминала, нормализацию промптов, хеширование состояния панели, валидацию Pydantic-схем API, логику объединения частей промпта.
+
+## Режимы работы
+
+| Режим | Описание |
+|---|---|
+| **Auto Plan** | AI разбивает задачу на 3–8 шагов, задаёт уточняющие вопросы перед стартом |
+| **Rewrite** | AI переформулирует размытый промпт чётко и отправляет его напрямую |
+| **Direct** | Промпт переводится на английский и отправляется как есть |
+| **Manual Plan** | Шаги вводятся вручную, система переводит и выполняет по очереди |
 
 ## Структура проекта
 
 ```
-nmnt/
+proxy-mind/
 ├── backend/
-│   ├── http_server/
-│   │   ├── main.py               # FastAPI, порт 3000
-│   │   ├── routers/              # ai, tmux, fs, ollama, settings
-│   │   ├── services/
-│   │   │   ├── ai.py             # AI-логика, промпты, Ollama-вызовы
-│   │   │   └── orchestrator.py   # оркестратор — конечный автомат выполнения
-│   │   └── clients/ollama/       # async httpx-клиент
-│   └── telegram_bot/             # FastAPI, порт 3001
+│   ├── main.py              # FastAPI, порт 3000
+│   ├── routers/             # HTTP-слой: ai, tmux, fs, ollama, settings
+│   ├── services/
+│   │   ├── ai.py            # AI-логика, промпты, Ollama-вызовы
+│   │   └── orchestrator.py  # конечный автомат выполнения
+│   ├── database/            # SQLite ORM (SQLAlchemy 2.0, aiosqlite)
+│   ├── clients/             # httpx-клиенты: Ollama, Telegram
+│   ├── schemas/             # Pydantic-схемы запросов/ответов
+│   ├── tests/               # pytest unit-тесты (54 теста)
+│   └── start.sh             # скрипт запуска
 ├── frontend/
 │   └── src/
-│       ├── components/           # 12 Vue-компонентов
-│       ├── stores/               # Pinia: sessions, notifications
-│       └── api/                  # axios-обёртки
-├── tools/
-│   └── fake_claude.py            # симулятор CLI для тестирования
-└── docs/
-    ├── uml/                      # PlantUML-диаграммы
-    ├── user_manual.md
-    ├── admin_manual.md
-    └── test_protocol.md
+│       ├── components/      # Vue 3 компоненты
+│       ├── stores/          # Pinia: sessions, notifications
+│       └── api/             # axios-обёртки
+└── tools/
+    └── fake_claude.py       # симулятор CLI для тестирования оркестратора
 ```
 
-## Настройка
+## Настройки
 
 Файл настроек создаётся автоматически: `~/.config/proxymind/settings.json`
 
@@ -118,21 +108,4 @@ nmnt/
 }
 ```
 
-## Тестирование без реального AI
-
-```bash
-# Запустить симулятор в tmux-панели:
-python tools/fake_claude.py [сценарий]
-
-# Сценарии: mixed, next_step, yesno, menu, open, error, working_long, permission_chain
-```
-
-## Документация
-
-- [Руководство пользователя](docs/user_manual.md)
-- [Руководство администратора](docs/admin_manual.md)
-- [Протокол тестирования](docs/test_protocol.md)
-
-## Автор
-
-Селиверстов Захар Александрович — преддипломная практика, Академия ТОП, 2026
+Настройки меняются через кнопку **Settings** в интерфейсе — перезапуск не нужен.

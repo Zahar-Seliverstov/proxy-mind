@@ -60,9 +60,8 @@ export const useSessionsStore = defineStore('sessions', () => {
             const tree = await sessionsApi.getAll()
             _applyTree(tree)
             return true
-        } catch (e) {
+        } catch {
             serverOnline.value = false
-            useNotificationsStore().push('error', String(e))
             return false
         } finally {
             loading.value = false
@@ -83,18 +82,24 @@ export const useSessionsStore = defineStore('sessions', () => {
 
     let _offWsInit = null
     let _offWsTree = null
-    let _pollTimer = null
+    let _onVisible = null
 
-    function startPolling() {
+    function start() {
 
         _offWsInit?.(); _offWsTree?.()
-        clearInterval(_pollTimer)
+        if (_onVisible) {
+            window.removeEventListener('focus', _onVisible)
+            document.removeEventListener('visibilitychange', _onVisible)
+        }
         const ws = useWebSocket()
         _offWsInit = ws.on('init',      (msg) => { if (msg.sessions) _applyTree(msg.sessions) })
         _offWsTree = ws.on('tmux:tree', (msg) => { _applyTree(msg.sessions) })
-        load()
 
-        _pollTimer = setInterval(load, 8000)
+        _onVisible = () => { if (!document.hidden) load() }
+        window.addEventListener('focus', _onVisible)
+        document.addEventListener('visibilitychange', _onVisible)
+
+        load()
     }
 
     function setPanePhase(paneId, phase) {
@@ -111,7 +116,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         sessions, loading, serverOnline,
         openedPaneIds, openedPanes, activeTabPaneId, activeTabPane,
         panePhases, setPanePhase,
-        findPane, openTab, closeTab, load, startPolling,
+        findPane, openTab, closeTab, load, start,
         createSession: (name, path)               => act(() => sessionsApi.create(name, path), `Session "${name}" created`),
         removeSession: (name)                     => act(() => sessionsApi.remove(name),        `Session "${name}" removed`),
         createWindow:  (sessionName)              => act(() => windowsApi.create(sessionName)),

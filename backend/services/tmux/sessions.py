@@ -5,6 +5,7 @@ import libtmux
 import libtmux.exc
 from loguru import logger
 
+from . import hooks
 from ._helpers import find_session
 
 
@@ -63,6 +64,7 @@ async def create(name: str | None = None, start_directory: str | None = None) ->
         logger.warning("Сессия '{}' уже существует.", resolved_name)
         raise
     logger.info("Сессия '{}' создана.", resolved_name)
+    hooks.register()
     return resolved_name
 
 

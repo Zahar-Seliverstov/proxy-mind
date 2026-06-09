@@ -19,7 +19,6 @@ import RainbowText from './RainbowText.vue'
 import { useWebSocket } from '../composables/useWebSocket.js'
 
 const props = defineProps({ paneId: { type: String, required: true } })
-const emit  = defineEmits(['loading'])
 
 const store  = useSessionsStore()
 const nStore = useNotificationsStore()
@@ -104,10 +103,6 @@ const isGenerating  = computed(() => phase.value === 'generating')
 const isRunning     = computed(() => phase.value === 'running')
 const isReview      = computed(() => phase.value === 'review')
 const isLoading     = computed(() => isValidating.value || isQuestioning.value || isGenerating.value || isRunning.value)
-watch(isLoading, val => emit('loading', val))
-
-const isActivePane = computed(() => store.activeTabPaneId === props.paneId)
-watch(isActivePane, active => { if (active) emit('loading', isLoading.value) })
 
 const isDirectLike = computed(() =>
     selectedMode.value === 'direct' || selectedMode.value === 'manual'
@@ -358,15 +353,17 @@ function onBack() {
                     <span class="pw-ctrl-label">mode</span>
                     <ModeSelect v-if="modes.length" v-model="selectedMode" :modes="modes" />
                 </div>
-                <div class="pw-ctrl">
-                    <span class="pw-ctrl-label">model</span>
-                    <ModelSelect v-if="models.length" v-model="selectedModel" :options="models" />
-                    <button v-else-if="modelsFailed" class="pw-model-err" @click="fetchModels">
-                        unavailable
-                        <RefreshCw :size="14" :stroke-width="1.5" />
-                    </button>
-                    <span v-else class="pw-ctrl-dim">{{ modelsLoading ? 'loading…' : 'no models' }}</span>
-                </div>
+                <template #end>
+                    <div class="pw-ctrl">
+                        <span class="pw-ctrl-label">model</span>
+                        <ModelSelect v-if="models.length" v-model="selectedModel" :options="models" />
+                        <button v-else-if="modelsFailed" class="pw-model-err" @click="fetchModels">
+                            unavailable
+                            <RefreshCw :size="14" :stroke-width="1.5" />
+                        </button>
+                        <span v-else class="pw-ctrl-dim">{{ modelsLoading ? 'loading…' : 'no models' }}</span>
+                    </div>
+                </template>
             </TopBar>
 
             <PlanReview v-if="selectedMode === 'manual'" v-model:steps="manualSteps" @run="onGenerate" />
@@ -401,7 +398,7 @@ function onBack() {
 
         <template v-else-if="isLoading">
             <div class="pw-loading">
-                <RainbowText :text="loadingLabel" :speed="2.4" font-size="1.6rem" />
+                <RainbowText :text="loadingLabel" :speed="2.4" font-size="var(--size-md)" />
             </div>
         </template>
 
@@ -411,10 +408,12 @@ function onBack() {
                     <ChevronLeft :size="14" :stroke-width="1.5" />
                     cancel
                 </button>
-                <div v-if="models.length" class="pw-ctrl">
-                    <span class="pw-ctrl-label">model</span>
-                    <ModelSelect v-model="selectedModel" :options="models" />
-                </div>
+                <template #end>
+                    <div v-if="models.length" class="pw-ctrl">
+                        <span class="pw-ctrl-label">model</span>
+                        <ModelSelect v-model="selectedModel" :options="models" />
+                    </div>
+                </template>
             </TopBar>
             <div class="pw-warn-body">
                 <TriangleAlert :size="22" :stroke-width="1.5" class="pw-warn-icon" />
@@ -441,10 +440,12 @@ function onBack() {
                     <ChevronLeft :size="14" :stroke-width="1.5" />
                     cancel
                 </button>
-                <div v-if="models.length" class="pw-ctrl">
-                    <span class="pw-ctrl-label">model</span>
-                    <ModelSelect v-model="selectedModel" :options="models" />
-                </div>
+                <template #end>
+                    <div v-if="models.length" class="pw-ctrl">
+                        <span class="pw-ctrl-label">model</span>
+                        <ModelSelect v-model="selectedModel" :options="models" />
+                    </div>
+                </template>
             </TopBar>
             <PlanReview
                 v-model:steps="reviewData.steps"
@@ -460,10 +461,12 @@ function onBack() {
                     <ChevronLeft :size="14" :stroke-width="1.5" />
                     cancel
                 </button>
-                <div v-if="models.length" class="pw-ctrl">
-                    <span class="pw-ctrl-label">model</span>
-                    <ModelSelect v-model="selectedModel" :options="models" />
-                </div>
+                <template #end>
+                    <div v-if="models.length" class="pw-ctrl">
+                        <span class="pw-ctrl-label">model</span>
+                        <ModelSelect v-model="selectedModel" :options="models" />
+                    </div>
+                </template>
             </TopBar>
             <div class="pw-prompt-area">
                 <textarea

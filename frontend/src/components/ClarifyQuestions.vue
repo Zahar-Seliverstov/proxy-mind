@@ -36,10 +36,12 @@ function onNext() {
                 <ChevronLeft :size="14" :stroke-width="1.5" />
                 cancel
             </button>
-            <div v-if="models.length" class="cq-model">
-                <span class="cq-model-label">model</span>
-                <ModelSelect :model-value="model" :options="models" @update:model-value="emit('update:model', $event)" />
-            </div>
+            <template #end>
+                <div v-if="models.length" class="cq-model">
+                    <span class="cq-model-label">model</span>
+                    <ModelSelect :model-value="model" :options="models" @update:model-value="emit('update:model', $event)" />
+                </div>
+            </template>
         </TopBar>
         <div class="cq-body">
             <div class="cq-qtext">{{ question.text }}</div>

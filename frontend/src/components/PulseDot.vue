@@ -30,13 +30,11 @@ defineProps({
 }
 
 .pd--active {
-    background: var(--pd-color);
-    animation: pd-blink var(--pd-duration) linear infinite;
+    animation: pd-blink var(--pd-duration) ease-in-out infinite;
 }
 
 @keyframes pd-blink {
-    0%,  40% { opacity: 1; }
-    50%, 90% { opacity: 0; }
-    100%     { opacity: 1; }
+    0%, 100% { background: var(--border-dim); }
+    50%      { background: var(--pd-color); }
 }
 </style>

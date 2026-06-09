@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 from loguru import logger
+from pydantic import BaseModel
 from schemas.ai_schema import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -13,9 +14,26 @@ from services import ai, orchestrator
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
+class PromptPatch(BaseModel):
+    content: str
+
+
 @router.get("/modes", status_code=status.HTTP_200_OK)
 def get_modes():
     return {"modes": ai.list_modes()}
+
+
+@router.get("/prompts", status_code=status.HTTP_200_OK)
+def get_prompts():
+    return {"prompts": ai.list_prompts()}
+
+
+@router.patch("/prompts/{name}", status_code=status.HTTP_200_OK)
+async def patch_prompt(name: str, body: PromptPatch):
+    ok = await ai.update_prompt(name, body.content)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"prompt '{name}' not found")
+    return {"name": name, "content": body.content}
 
 
 @router.post("/validate", status_code=status.HTTP_200_OK)
@@ -102,5 +120,13 @@ async def run_pause(pane_id: str):
 async def run_unpause(pane_id: str):
     try:
         return await orchestrator.unpause(pane_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@router.post("/runs/{pane_id}/resume", status_code=status.HTTP_200_OK)
+async def run_resume(pane_id: str):
+    try:
+        return await orchestrator.resume(pane_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))

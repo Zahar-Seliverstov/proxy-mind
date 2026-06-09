@@ -25,3 +25,4 @@ export const getRun          = (paneId)  => api.get(`/runs/${encodeURIComponent(
 export const stopRun         = (paneId)  => api.post(`/runs/${encodeURIComponent(paneId)}/stop`).then(r => r.data)
 export const pauseRun        = (paneId)  => api.post(`/runs/${encodeURIComponent(paneId)}/pause`).then(r => r.data)
 export const unpauseRun      = (paneId)  => api.post(`/runs/${encodeURIComponent(paneId)}/unpause`).then(r => r.data)
+export const resumeRun       = (paneId)  => api.post(`/runs/${encodeURIComponent(paneId)}/resume`).then(r => r.data)

@@ -23,17 +23,17 @@ const store = useNotificationsStore()
 <style scoped>
 .ts-wrap {
     position: fixed;
-    top: 16px;
-    left: calc(var(--sidebar-width, 260px) + 12px);
+    bottom: 16px;
+    right: 16px;
     z-index: var(--z-toast);
     pointer-events: none;
 }
 
 .ts-list {
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;
     gap: 8px;
-    align-items: flex-start;
+    align-items: flex-end;
 }
 </style>
 
@@ -46,7 +46,7 @@ const store = useNotificationsStore()
 }
 .toast-leave-to {
     opacity: 0;
-    transform: translateY(-8px) scale(0.95);
+    transform: translateY(8px) scale(0.95);
 }
 .toast-move {
     transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
@@ -55,7 +55,7 @@ const store = useNotificationsStore()
 @keyframes toast-in {
     from {
         opacity: 0;
-        transform: translateY(-16px) scale(0.95);
+        transform: translateY(16px) scale(0.95);
     }
     to {
         opacity: 1;

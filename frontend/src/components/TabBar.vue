@@ -1,12 +1,9 @@
 <script setup>
-import { X, LoaderCircle } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import { useSessionsStore } from '../stores/sessions.js'
-import { fmtPath } from '../utils.js'
+import { dirName } from '../utils.js'
 
 const store = useSessionsStore()
-
-const LOADING_PHASES = new Set(['validating', 'questioning', 'generating', 'running'])
-const isPaneLoading = (paneId) => LOADING_PHASES.has(store.panePhases[paneId])
 </script>
 
 <template>
@@ -25,17 +22,9 @@ const isPaneLoading = (paneId) => LOADING_PHASES.has(store.panePhases[paneId])
                 @keydown.space.prevent="store.activeTabPaneId = pane.id"
                 :title="pane.path"
             >
-                <LoaderCircle
-                    v-if="isPaneLoading(pane.id)"
-                    :size="13"
-                    :stroke-width="2"
-                    class="tb-spinner"
-                />
-                <span class="tb-cmd">{{ pane.command }}</span>
-                <span class="tb-path">{{ fmtPath(pane.path) }}</span>
-                <span class="tb-id">{{ pane.id }}</span>
+                <span class="tb-cmd">{{ dirName(pane.path) }} ({{ pane.command }})</span>
                 <button class="tb-close" @click.stop="store.closeTab(pane.id)" title="Close tab">
-                    <X :size="11" :stroke-width="2" />
+                    <X :size="13" :stroke-width="2" />
                 </button>
             </div>
         </div>
@@ -94,7 +83,6 @@ const isPaneLoading = (paneId) => LOADING_PHASES.has(store.panePhases[paneId])
     color: var(--text-secondary);
 }
 .tb-tab--active {
-    background: var(--accent-bg-rest);
     color: var(--text-primary);
 }
 .tb-tab--active::before {
@@ -109,56 +97,24 @@ const isPaneLoading = (paneId) => LOADING_PHASES.has(store.panePhases[paneId])
     color: var(--text-primary);
 }
 
-.tb-path {
-    font-size: var(--size-xs);
-    color: var(--text-faint);
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.tb-tab--active .tb-path {
-    color: var(--text-secondary);
-}
-
-.tb-id {
-    font-size: var(--size-xs);
-    color: var(--text-muted);
-    letter-spacing: var(--tracking);
-}
-
 .tb-close {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
-    margin-left: 2px;
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
     padding: 0;
     border: none;
     background: none;
     border-radius: var(--radius);
-    color: var(--text-dim);
+    color: var(--text-muted);
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.1s, background 0.1s, color 0.1s;
+    transition: background 0.1s, color 0.1s;
     flex-shrink: 0;
-}
-.tb-tab:hover .tb-close,
-.tb-tab--active .tb-close {
-    opacity: 1;
 }
 .tb-close:hover {
     background: var(--danger-bg);
     color: var(--danger);
-}
-
-.tb-spinner {
-    margin-right: 1px;
-    color: var(--accent);
-    flex-shrink: 0;
-    animation: tb-spin 0.8s linear infinite;
-}
-@keyframes tb-spin {
-    to { transform: rotate(360deg); }
 }
 </style>

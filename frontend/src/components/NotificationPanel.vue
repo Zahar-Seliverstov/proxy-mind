@@ -1,33 +1,27 @@
 <script setup>
-import { ref } from 'vue'
-import { Bell, X } from 'lucide-vue-next'
+import { Bell } from 'lucide-vue-next'
 import { useNotificationsStore, NOTIF_ICONS, NOTIF_ICON_FALLBACK } from '../stores/notifications.js'
-import { useResize } from '../composables/useResize.js'
 
 const store = useNotificationsStore()
-const panelWidth = ref(280)
 
 function fmt(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
-
-const startResize = useResize(panelWidth, { min: 200, max: 600 })
 </script>
 
 <template>
     <Transition name="np">
-        <div v-if="store.panelOpen" class="np" :style="{ width: panelWidth + 'px' }">
+        <div v-if="store.panelOpen" class="np">
             <div class="np-inner">
                 <div class="np-header">
                     <span class="np-title">Notifications</span>
                     <div class="np-actions">
                         <button
                             v-if="store.all.length"
-                            class="np-clear"
+                            class="np-act np-act--danger np-clear"
                             @click="store.clear()"
                             title="Clear all"
                         >
-                            <X :size="14" :stroke-width="1.5" />
                             clear all
                         </button>
                     </div>
@@ -59,8 +53,6 @@ const startResize = useResize(panelWidth, { min: 200, max: 600 })
                     </li>
                 </ul>
             </div>
-
-            <div class="np-resize" @mousedown.prevent="startResize" />
         </div>
     </Transition>
 </template>
@@ -71,12 +63,11 @@ const startResize = useResize(panelWidth, { min: 200, max: 600 })
     flex-shrink: 0;
     height: 100vh;
     background: var(--bg-panel);
-    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     font-family: var(--font-mono);
     font-size: var(--size-base);
-    position: relative;
     overflow: hidden;
 }
 
@@ -85,21 +76,6 @@ const startResize = useResize(panelWidth, { min: 200, max: 600 })
     display: flex;
     flex-direction: column;
     min-height: 0;
-}
-
-.np-resize {
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 4px;
-    height: 100%;
-    cursor: col-resize;
-    z-index: 1;
-    transition: background 0.1s;
-}
-.np-resize:hover,
-.np-resize:active {
-    background: var(--accent-border-faint);
 }
 
 .np-header {
@@ -120,23 +96,29 @@ const startResize = useResize(panelWidth, { min: 200, max: 600 })
     align-items: center;
     gap: 4px;
 }
-.np-clear {
+.np-act {
     background: none;
     border: none;
     cursor: pointer;
     color: var(--text-faint);
-    font-family: inherit;
-    font-size: var(--size-sm);
-    padding: 2px 4px 2px 2px;
+    padding: 3px;
     border-radius: var(--radius);
     transition: var(--transition);
     display: flex;
     align-items: center;
-    gap: 3px;
 }
-.np-clear:hover {
+.np-act:hover {
+    color: var(--text-primary);
+    background: var(--border);
+}
+.np-act--danger:hover {
     color: var(--danger);
     background: var(--danger-bg);
+}
+.np-clear {
+    font-family: inherit;
+    font-size: var(--size-sm);
+    padding: 2px 6px;
 }
 
 .np-empty {

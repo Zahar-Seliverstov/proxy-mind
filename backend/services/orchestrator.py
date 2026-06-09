@@ -97,6 +97,7 @@ _lock = asyncio.Lock()
 _bg_tasks: set[asyncio.Task] = set()
 
 _TERMINAL = ("done", "error", "stopped")
+_PAUSED = ("user_paused", "limit_paused")
 
 
 def _spawn(coro) -> asyncio.Task:
@@ -114,10 +115,15 @@ async def _expire_terminal(pane_id: str) -> None:
             _runs.pop(pane_id, None)
 
 
+def _detect_limit(text: str) -> bool:
+    pattern = ai.build_limit_regex()
+    return pattern is not None and bool(pattern.search(text))
+
+
 async def start(pane_id: str, prompts: list[str], model: str) -> dict[str, Any]:
     async with _lock:
         existing = _runs.get(pane_id)
-        if existing and existing.status in ("running", "user_paused"):
+        if existing and existing.status in ("running", *_PAUSED):
             raise RuntimeError(
                 f"На панели '{pane_id}' уже идёт запуск (status={existing.status})."
             )
@@ -148,7 +154,7 @@ async def stop(pane_id: str) -> dict[str, Any]:
         run = _runs.get(pane_id)
         if run is None:
             raise ValueError(f"На панели '{pane_id}' нет активного запуска.")
-        if run.status in ("running", "user_paused"):
+        if run.status in ("running", *_PAUSED):
             run.status = "stopped"
             if run.task and not run.task.done():
                 run.task.cancel()
@@ -191,12 +197,31 @@ async def unpause(pane_id: str) -> dict[str, Any]:
     return snap
 
 
+async def resume(pane_id: str) -> dict[str, Any]:
+    """Возобновить запуск после limit_paused — повторно отправить текущий шаг."""
+    async with _lock:
+        run = _runs.get(pane_id)
+        if run is None:
+            raise ValueError(f"На панели '{pane_id}' нет запуска.")
+        if run.status != "limit_paused":
+            raise ValueError(
+                f"Resume доступен только для limit_paused-запуска (текущее: {run.status})."
+            )
+        run.status = "running"
+        run.sent_current_step = False
+        if run.task is None or run.task.done():
+            run.task = asyncio.create_task(_run_loop(run))
+        snap = run.snapshot()
+    await ws_hub.broadcast({"type": "run:status", "pane_id": pane_id, "snapshot": snap})
+    return snap
+
+
 async def _run_loop(run: _Run) -> None:
     try:
         while run.step_index < len(run.prompts):
             if run.status in ("stopped", "error", "done"):
                 break
-            if run.status == "user_paused":
+            if run.status in _PAUSED:
                 await asyncio.sleep(POLL_INTERVAL_S)
                 continue
             if not run.sent_current_step:
@@ -222,21 +247,45 @@ async def _run_loop(run: _Run) -> None:
         await notifications.notify(_notify_done(run))
     elif run.status == "error":
         await notifications.notify(_notify_error(run))
+    elif run.status == "limit_paused":
+        await notifications.notify(_notify_limit_paused(run))
 
 
 def _notify_done(run: _Run) -> str:
+    steps_preview = "\n".join(
+        f"  {i + 1}. {s[:60]}{'…' if len(s) > 60 else ''}"
+        for i, s in enumerate(run.prompts)
+    )
     return (
-        f"Разработка завершена.\n\n"
-        f"Шагов выполнено: {len(run.prompts)}\n"
-        f"Панель: {run.pane_id}"
+        f"✅ <b>Задача выполнена</b>\n\n"
+        f"<b>Панель:</b> <code>{run.pane_id}</code>\n"
+        f"<b>Модель:</b> <code>{run.model}</code>\n"
+        f"<b>Шагов выполнено:</b> {len(run.prompts)}\n\n"
+        f"<b>Шаги:</b>\n{steps_preview}"
     )
 
 
 def _notify_error(run: _Run) -> str:
-    lines = [f"Ошибка выполнения.\n\nПанель: {run.pane_id}"]
+    msg = (
+        f"❌ <b>Ошибка выполнения</b>\n\n"
+        f"<b>Панель:</b> <code>{run.pane_id}</code>\n"
+        f"<b>Модель:</b> <code>{run.model}</code>\n"
+        f"<b>Выполнено шагов:</b> {run.step_index} из {len(run.prompts)}"
+    )
     if run.error:
-        lines.append(f"Причина: {run.error}")
-    return "\n".join(lines)
+        msg += f"\n\n<b>Причина:</b>\n<code>{run.error[:300]}</code>"
+    return msg
+
+
+def _notify_limit_paused(run: _Run) -> str:
+    return (
+        f"⏸ <b>Выполнение приостановлено — лимит CLI</b>\n\n"
+        f"<b>Панель:</b> <code>{run.pane_id}</code>\n"
+        f"<b>Модель:</b> <code>{run.model}</code>\n"
+        f"<b>Выполнено шагов:</b> {run.step_index} из {len(run.prompts)}\n"
+        f"<b>Текущий шаг:</b> {run.step_index + 1}\n\n"
+        f"Пополните баланс или дождитесь сброса лимита, затем нажмите <b>Resume</b> в интерфейсе."
+    )
 
 
 async def _send_current_step(run: _Run) -> None:
@@ -256,6 +305,15 @@ async def _drive_until_step_advances(run: _Run) -> None:
     while run.status == "running":
         await _wait_for_stable(run)
         if run.status != "running":
+            return
+        lines = await tmux.panes.get_content(run.pane_id)
+        pane_text = _clean_pane(_tail(lines))
+        if _detect_limit(pane_text):
+            run.status = "limit_paused"
+            await ws_hub.broadcast(
+                {"type": "run:status", "pane_id": run.pane_id, "snapshot": run.snapshot()}
+            )
+            await notifications.notify(_notify_limit_paused(run))
             return
         decision = await _analyze(run)
         if run.status != "running":

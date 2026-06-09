@@ -1,9 +1,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import {
-    ChevronLeft, Pause, Play,
+    ChevronLeft, Pause, Play, ChevronDown,
     Circle, Check, LoaderCircle, X,
-    CheckCircle, Flag, CircleHelp, Zap, CircleX,
+    MessageSquare, Zap, AlertCircle, Flag,
 } from 'lucide-vue-next'
 import PulseDot from './PulseDot.vue'
 import { useNotificationsStore } from '../stores/notifications.js'
@@ -16,7 +16,6 @@ const nStore = useNotificationsStore()
 const props = defineProps({
     paneId: { type: String, required: true },
 })
-
 const emit = defineEmits(['gone'])
 
 const state     = ref(null)
@@ -29,20 +28,15 @@ let _offEvent  = null
 let _offInit   = null
 
 function _applySnapshot(snap) {
-    if (!snap) {
-        state.value = null
-        emit('gone')
-        return
-    }
+    if (!snap) { state.value = null; emit('gone'); return }
     state.value = snap
+    _autoOpen(snap.step_index)
 }
 
 function _applyEvent(msg) {
     if (!state.value) return
     const entry = { ...msg.entry }
-
     const log = state.value.log ?? []
-
     if (entry.seq != null && log.some(e => e.seq === entry.seq)) return
     if (entry.seq == null && log.some(e => e.at === entry.at && e.step_index === entry.step_index)) return
     state.value = {
@@ -52,6 +46,13 @@ function _applyEvent(msg) {
         log:           [...log, entry],
         last_decision: entry,
     }
+}
+
+function _autoOpen(idx) {
+    if (idx == null) return
+    const next = new Set(openSteps.value)
+    next.add(idx)
+    openSteps.value = next
 }
 
 function subscribe() {
@@ -64,7 +65,6 @@ function subscribe() {
         if (msg.pane_id !== props.paneId) return
         _applyEvent(msg)
     })
-
     _offInit = ws.on('init', (msg) => {
         _applySnapshot(msg.runs?.[props.paneId] ?? null)
     })
@@ -84,55 +84,46 @@ watch(() => props.paneId, () => {
     openSteps.value = new Set()
     subscribe()
 })
+watch(() => state.value?.step_index, (idx) => { if (idx != null) _autoOpen(idx) })
 
-const status       = computed(() => state.value?.status ?? 'loading')
-const isRunning    = computed(() => status.value === 'running')
-const isUserPaused = computed(() => status.value === 'user_paused')
-const isTerminal   = computed(() => ['done', 'error', 'stopped'].includes(status.value))
-const statusLabel  = computed(() => status.value === 'user_paused' ? 'paused' : status.value)
+// ── computed ──────────────────────────────────────────────────────────────────
 
-const steps = computed(() => state.value?.steps ?? [])
-const error = computed(() => state.value?.error ?? null)
-
-const log = computed(() => {
-    const items = state.value?.log ?? []
-    return [...items].reverse().map(e => ({
-        ...e,
-        meta: ACTOR_META[e.state] ?? { actor: 'cli', icon: CircleX, label: e.state },
-    }))
+const status        = computed(() => state.value?.status ?? 'loading')
+const isRunning     = computed(() => status.value === 'running')
+const isUserPaused  = computed(() => status.value === 'user_paused')
+const isLimitPaused = computed(() => status.value === 'limit_paused')
+const isTerminal    = computed(() => ['done', 'error', 'stopped'].includes(status.value))
+const statusLabel   = computed(() => {
+    if (status.value === 'user_paused')  return 'paused'
+    if (status.value === 'limit_paused') return 'limit reached'
+    return status.value
 })
 
-const STEP_ICONS = {
-    pending: Circle,
-    done:    Check,
-    running: LoaderCircle,
-    error:   X,
-    paused:  Pause,
-}
+const steps = computed(() => state.value?.steps ?? [])
+const globalError = computed(() => state.value?.error ?? null)
 
-const ACTOR_META = {
-    working:    { actor: 'cli', icon: LoaderCircle, label: 'cli working'   },
-    next_step:  { actor: 'ok',  icon: CheckCircle,  label: 'step finished' },
-    done:       { actor: 'ok',  icon: Flag,         label: 'plan finished' },
-    ask_user:   { actor: 'cli', icon: CircleHelp,   label: 'cli asked'     },
-    auto_reply: { actor: 'ai',  icon: Zap,          label: 'ai answered'   },
-    error:      { actor: 'cli', icon: CircleX,      label: 'cli error'     },
-}
-
-function stepIcon(s) {
-    return STEP_ICONS[s] ?? Circle
-}
+const logsByStep = computed(() => {
+    const map = {}
+    for (const e of (state.value?.log ?? [])) {
+        const idx = e.step_index ?? 0
+        if (!map[idx]) map[idx] = []
+        // skip pure "working" noise unless it's the only entry
+        if (e.state !== 'working') map[idx].push(e)
+    }
+    return map
+})
 
 function stepStatus(i) {
     const s = state.value
     if (!s) return 'pending'
-    if (s.status === 'done')        return 'done'
-    if (i < s.step_index)           return 'done'
-    if (i > s.step_index)           return 'pending'
-    if (s.status === 'error')       return 'error'
-    if (s.status === 'running')     return 'running'
-    if (s.status === 'user_paused') return 'paused'
-    if (s.status === 'stopped')     return 'pending'
+    if (s.status === 'done')         return 'done'
+    if (i < s.step_index)            return 'done'
+    if (i > s.step_index)            return 'pending'
+    if (s.status === 'error')        return 'error'
+    if (s.status === 'running')      return 'running'
+    if (s.status === 'user_paused')  return 'paused'
+    if (s.status === 'limit_paused') return 'paused'
+    if (s.status === 'stopped')      return 'stopped'
     return 'pending'
 }
 
@@ -148,52 +139,72 @@ function oneLine(text) {
 
 function fmtTime(t) {
     if (!t) return ''
-    const d = new Date(t * 1000)
-    return d.toLocaleTimeString('en-GB', { hour12: false })
+    return new Date(t * 1000).toLocaleTimeString('en-GB', { hour12: false })
 }
 
-function logStepLabel(e) {
-    return e.state === 'done' ? '' : `step ${(e.step_index ?? 0) + 1}`
+// ── log entry helpers ─────────────────────────────────────────────────────────
+
+function entryKind(e) {
+    if (e.state === 'ask_user')   return 'ask'
+    if (e.state === 'auto_reply') return 'reply'
+    if (e.state === 'next_step')  return 'done'
+    if (e.state === 'error')      return 'error'
+    return 'info'
 }
+
+// Pair ask_user + auto_reply entries together so they render as Q/A
+function pairedLog(entries) {
+    const result = []
+    let i = 0
+    while (i < entries.length) {
+        const e = entries[i]
+        if (e.state === 'ask_user') {
+            const next = entries[i + 1]
+            if (next?.state === 'auto_reply') {
+                result.push({ type: 'qa', ask: e, reply: next, key: e.seq ?? e.at })
+                i += 2
+                continue
+            }
+        }
+        result.push({ type: 'single', entry: e, key: e.seq ?? e.at })
+        i++
+    }
+    return result
+}
+
+// ── actions ───────────────────────────────────────────────────────────────────
 
 async function onPause() {
     if (acting.value) return
     acting.value = true
-    try {
-        state.value = await aiApi.pauseRun(props.paneId)
-    } catch (e) {
-        nStore.push('error', String(e), 'Pause failed')
-    } finally {
-        acting.value = false
-    }
+    try { state.value = await aiApi.pauseRun(props.paneId) }
+    catch (e) { nStore.push('error', String(e), 'Pause failed') }
+    finally { acting.value = false }
 }
 
 async function onResumeUser() {
     if (acting.value) return
     acting.value = true
-    try {
-        state.value = await aiApi.unpauseRun(props.paneId)
-    } catch (e) {
-        nStore.push('error', String(e), 'Resume failed')
-    } finally {
-        acting.value = false
-    }
+    try { state.value = await aiApi.unpauseRun(props.paneId) }
+    catch (e) { nStore.push('error', String(e), 'Resume failed') }
+    finally { acting.value = false }
+}
+
+async function onResumeLimit() {
+    if (acting.value) return
+    acting.value = true
+    try { state.value = await aiApi.resumeRun(props.paneId) }
+    catch (e) { nStore.push('error', String(e), 'Resume failed') }
+    finally { acting.value = false }
 }
 
 async function onCancel() {
     if (acting.value) return
     acting.value = true
-    try {
-        await aiApi.stopRun(props.paneId)
-    } catch (e) {
-        nStore.push('error', String(e), 'Cancel failed')
-    } finally {
-        acting.value = false
-        state.value = null
-        emit('gone')
-    }
+    try { await aiApi.stopRun(props.paneId) }
+    catch (e) { nStore.push('error', String(e), 'Cancel failed') }
+    finally { acting.value = false; state.value = null; emit('gone') }
 }
-
 </script>
 
 <template>
@@ -204,92 +215,129 @@ async function onCancel() {
                 {{ isTerminal ? 'back' : 'cancel' }}
             </button>
             <template #center>
-                <PulseDot v-if="isRunning" />
                 <span class="rm-status" :class="`rm-status--${status}`">{{ statusLabel }}</span>
             </template>
             <template #end>
                 <button v-if="isRunning" class="btn btn--warn" :disabled="acting" @click="onPause">
-                    <Pause :size="14" :stroke-width="1.5" />
-                    pause
+                    <Pause :size="14" :stroke-width="1.5" /> pause
                 </button>
                 <button v-if="isUserPaused" class="btn btn--accent" :disabled="acting" @click="onResumeUser">
-                    <Play :size="14" :stroke-width="1.5" />
-                    resume
+                    <Play :size="14" :stroke-width="1.5" /> resume
+                </button>
+                <button v-if="isLimitPaused" class="btn btn--accent" :disabled="acting" @click="onResumeLimit">
+                    <Play :size="14" :stroke-width="1.5" /> resume
                 </button>
             </template>
         </TopBar>
 
         <div class="rm-body">
-
             <div v-if="!state" class="rm-empty">loading…</div>
 
             <template v-else>
 
+                <!-- limit banner -->
+                <div v-if="isLimitPaused" class="rm-banner rm-banner--warn">
+                    <AlertCircle :size="14" :stroke-width="1.5" />
+                    CLI hit a usage or billing limit. Top up your balance or wait for the reset, then press <b>resume</b>.
+                </div>
+
+                <!-- global error banner -->
+                <div v-if="globalError" class="rm-banner rm-banner--err">
+                    <AlertCircle :size="14" :stroke-width="1.5" />
+                    {{ globalError }}
+                </div>
+
+                <!-- steps -->
                 <div class="rm-steps">
                     <div
                         v-for="(step, i) in steps"
                         :key="i"
                         class="rm-step"
-                        :class="{ 'rm-step--open': openSteps.has(i) }"
-                        @click="toggleStep(i)"
+                        :class="[
+                            `rm-step--${stepStatus(i)}`,
+                            { 'rm-step--open': openSteps.has(i) }
+                        ]"
                     >
-                        <component
-                            :is="stepIcon(stepStatus(i))"
-                            :size="16"
-                            :stroke-width="1.5"
-                            class="rm-step-icon"
-                            :class="[`rm-step-icon--${stepStatus(i)}`, { spin: stepStatus(i) === 'running' }]"
-                        />
-                        <span class="rm-step-num">{{ String(i + 1).padStart(2, '0') }}</span>
-                        <div class="rm-step-text" :class="{ 'rm-step-text--collapsed': !openSteps.has(i) }">
-                            {{ openSteps.has(i) ? step : oneLine(step) }}
-                        </div>
-                    </div>
-                </div>
-
-                <div v-if="error" class="rm-card rm-card--err">
-                    <div class="rm-card-title">error</div>
-                    <div class="rm-card-body">{{ error }}</div>
-                </div>
-
-                <div class="rm-log">
-                    <div class="rm-log-title">activity</div>
-                    <div v-if="!log.length" class="rm-log-empty">nothing yet</div>
-                    <div v-else class="rm-log-list">
-                        <div
-                            v-for="(e, i) in log"
-                            :key="i"
-                            class="rm-log-item"
-                            :class="`rm-log-item--${e.meta.actor}`"
-                        >
-                            <component
-                                :is="e.meta.icon"
-                                :size="14"
-                                :stroke-width="1.5"
-                                class="rm-log-icon"
-                            />
-                            <div class="rm-log-body">
-                                <div class="rm-log-head">
-                                    <span class="rm-log-actor">{{ e.meta.label }}</span>
-                                    <span v-if="logStepLabel(e)" class="rm-log-step">{{ logStepLabel(e) }}</span>
-                                    <span class="rm-log-time">{{ fmtTime(e.at) }}</span>
-                                </div>
-                                <div v-if="e.payload?.question" class="rm-log-q">
-                                    <span class="rm-log-q-tag">Q</span>
-                                    <span class="rm-log-q-text">{{ e.payload.question }}</span>
-                                </div>
-                                <div v-if="e.payload?.text" class="rm-log-a">
-                                    <span class="rm-log-a-tag">A</span>
-                                    <span class="rm-log-a-text">{{ e.payload.text }}</span>
-                                </div>
-                                <div v-if="e.reason" class="rm-log-reason">{{ e.reason }}</div>
+                        <!-- step header -->
+                        <div class="rm-step-header" @click="toggleStep(i)">
+                            <div class="rm-step-icon-wrap">
+                                <PulseDot v-if="stepStatus(i) === 'running'" :size="8" />
+                                <Check         v-else-if="stepStatus(i) === 'done'"    :size="14" :stroke-width="2"   class="rm-sicon rm-sicon--done" />
+                                <X             v-else-if="stepStatus(i) === 'error'"   :size="14" :stroke-width="2"   class="rm-sicon rm-sicon--error" />
+                                <Pause         v-else-if="stepStatus(i) === 'paused'"  :size="14" :stroke-width="1.5" class="rm-sicon rm-sicon--paused" />
+                                <LoaderCircle  v-else-if="stepStatus(i) === 'stopped'" :size="14" :stroke-width="1.5" class="rm-sicon rm-sicon--stopped" />
+                                <Circle        v-else                                  :size="14" :stroke-width="1.5" class="rm-sicon rm-sicon--pending" />
+                            </div>
+                            <span class="rm-step-num">{{ String(i + 1).padStart(2, '0') }}</span>
+                            <div class="rm-step-text">
+                                {{ openSteps.has(i) ? step : oneLine(step) }}
+                            </div>
+                            <div class="rm-step-meta">
+                                <span
+                                    v-if="(logsByStep[i] ?? []).length && !openSteps.has(i)"
+                                    class="rm-step-badge"
+                                >{{ logsByStep[i].length }}</span>
+                                <ChevronDown
+                                    :size="12"
+                                    :stroke-width="1.5"
+                                    class="rm-step-chevron"
+                                    :class="{ 'rm-step-chevron--open': openSteps.has(i) }"
+                                />
                             </div>
                         </div>
+
+                        <!-- step log -->
+                        <div v-if="openSteps.has(i) && logsByStep[i]?.length" class="rm-step-log">
+                            <template v-for="item in pairedLog(logsByStep[i] ?? [])" :key="item.key">
+
+                                <!-- Q/A pair -->
+                                <div v-if="item.type === 'qa'" class="rm-log-qa">
+                                    <div class="rm-log-qa-q">
+                                        <MessageSquare :size="11" :stroke-width="1.5" class="rm-log-qa-icon" />
+                                        <span class="rm-log-qa-text">{{ item.ask.payload?.question }}</span>
+                                        <span v-if="item.ask.payload?.kind" class="rm-log-badge rm-log-badge--ask">{{ item.ask.payload.kind }}</span>
+                                        <span class="rm-log-time">{{ fmtTime(item.ask.at) }}</span>
+                                    </div>
+                                    <div class="rm-log-qa-a">
+                                        <Zap :size="11" :stroke-width="1.5" class="rm-log-qa-icon rm-log-qa-icon--ai" />
+                                        <span class="rm-log-qa-answer">{{ item.reply.payload?.text || '—' }}</span>
+                                    </div>
+                                </div>
+
+                                <!-- single entry -->
+                                <template v-else>
+                                    <div v-if="entryKind(item.entry) === 'ask'" class="rm-log-qa">
+                                        <div class="rm-log-qa-q">
+                                            <MessageSquare :size="11" :stroke-width="1.5" class="rm-log-qa-icon" />
+                                            <span class="rm-log-qa-text">{{ item.entry.payload?.question }}</span>
+                                            <span v-if="item.entry.payload?.kind" class="rm-log-badge rm-log-badge--ask">{{ item.entry.payload.kind }}</span>
+                                            <span class="rm-log-time">{{ fmtTime(item.entry.at) }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else-if="entryKind(item.entry) === 'reply'" class="rm-log-qa">
+                                        <div class="rm-log-qa-a">
+                                            <Zap :size="11" :stroke-width="1.5" class="rm-log-qa-icon rm-log-qa-icon--ai" />
+                                            <span class="rm-log-qa-answer">{{ item.entry.payload?.text || '—' }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else-if="entryKind(item.entry) === 'error'" class="rm-log-err">
+                                        <AlertCircle :size="11" :stroke-width="1.5" />
+                                        <span>{{ item.entry.reason }}</span>
+                                    </div>
+                                    <div v-else-if="entryKind(item.entry) === 'done'" class="rm-log-done">
+                                        <Flag :size="11" :stroke-width="1.5" />
+                                        <span>step complete</span>
+                                        <span class="rm-log-time">{{ fmtTime(item.entry.at) }}</span>
+                                    </div>
+                                </template>
+
+                            </template>
+                        </div>
+
                     </div>
                 </div>
 
             </template>
-
         </div>
     </div>
 </template>
@@ -310,10 +358,10 @@ async function onCancel() {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 14px 16px 18px;
+    padding: 12px 14px 18px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     scrollbar-width: thin;
 }
 
@@ -323,55 +371,85 @@ async function onCancel() {
     padding: 24px;
 }
 
+/* status chip */
 .rm-status { color: var(--text-faint); }
-.rm-status--running     { color: var(--accent); }
-.rm-status--done        { color: var(--ok); }
-.rm-status--error       { color: var(--danger); }
-.rm-status--user_paused { color: var(--warn); }
-.rm-status--stopped     { color: var(--text-dim); }
+.rm-status--running      { color: var(--text-secondary); }
+.rm-status--done         { color: var(--ok); }
+.rm-status--error        { color: var(--danger); }
+.rm-status--user_paused  { color: var(--warn); }
+.rm-status--limit_paused { color: var(--warn); }
+.rm-status--stopped      { color: var(--text-dim); }
 
+/* banners */
+.rm-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: var(--radius);
+    font-size: var(--size-sm);
+    line-height: 1.5;
+    border: 1px solid;
+}
+.rm-banner--warn { border-color: var(--warn);   color: var(--warn);   background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.rm-banner--err  { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.rm-banner b { font-weight: 600; }
+.rm-banner svg { flex-shrink: 0; margin-top: 1px; }
+
+/* steps list */
 .rm-steps {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    width: 100%;
-    min-width: 0;
-    overflow: hidden;
 }
+
+/* step card */
 .rm-step {
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) * 1.5);
+    background: var(--bg-panel);
+    overflow: hidden;
+    transition: border-color 0.12s;
+}
+.rm-step--running { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.rm-step--done    { border-color: color-mix(in srgb, var(--ok) 25%, var(--border)); }
+.rm-step--error   { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.rm-step--paused  { border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+
+/* step header row */
+.rm-step-header {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    min-width: 0;
-    overflow: hidden;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 10px;
+    gap: 8px;
+    padding: 9px 10px;
     cursor: pointer;
-    transition: border-color 0.1s, background 0.1s;
+    user-select: none;
 }
-.rm-step:hover { border-color: var(--border-dim); }
-.rm-step--open { background: var(--bg-input); }
+.rm-step-header:hover { background: color-mix(in srgb, var(--border) 30%, transparent); }
 
-.rm-step-icon {
+.rm-step-icon-wrap {
     flex-shrink: 0;
+    width: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin-top: 2px;
-    color: var(--text-muted);
 }
-.rm-step-icon--pending { color: var(--text-muted); }
-.rm-step-icon--done    { color: var(--ok); }
-.rm-step-icon--running { color: var(--accent); }
-.rm-step-icon--error   { color: var(--danger); }
-.rm-step-icon--paused  { color: var(--warn); }
+
+.rm-sicon          { flex-shrink: 0; }
+.rm-sicon--pending { color: var(--text-muted); }
+.rm-sicon--done    { color: var(--ok); }
+.rm-sicon--error   { color: var(--danger); }
+.rm-sicon--paused  { color: var(--warn); }
+.rm-sicon--stopped { color: var(--text-dim); }
 
 .rm-step-num {
+    flex-shrink: 0;
     font-size: var(--size-xs);
     color: var(--text-faint);
-    flex-shrink: 0;
-    margin-top: 3px;
-    min-width: 16px;
     letter-spacing: var(--tracking);
+    margin-top: 3px;
+    min-width: 18px;
 }
 
 .rm-step-text {
@@ -380,157 +458,109 @@ async function onCancel() {
     color: var(--text-primary);
     font-size: var(--size-base);
     line-height: 1.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rm-step--open .rm-step-text {
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: anywhere;
-}
-.rm-step-text--collapsed {
-    white-space: nowrap !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    word-break: normal !important;
-    overflow-wrap: normal !important;
+    overflow: visible;
 }
 
-.rm-card {
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-panel);
-    padding: 10px 12px;
-}
-.rm-card--err { border-color: var(--danger); }
-.rm-card-title {
+.rm-step-meta {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: var(--text-faint);
-    font-size: var(--size-sm);
-    letter-spacing: var(--tracking);
-    margin-bottom: 6px;
-}
-.rm-card-body {
-    color: var(--text-primary);
-    font-size: var(--size-base);
-    line-height: 1.55;
-    white-space: pre-wrap;
-    word-break: break-word;
+    gap: 5px;
+    margin-top: 2px;
 }
 
-.rm-log {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg-panel);
-    padding: 10px 12px;
-}
-.rm-log-title {
+.rm-step-badge {
+    font-size: 10px;
     color: var(--text-faint);
-    font-size: var(--size-sm);
-    letter-spacing: var(--tracking);
-    margin-bottom: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-dim);
+    border-radius: 8px;
+    padding: 0 5px;
+    line-height: 16px;
 }
-.rm-log-empty {
+
+.rm-step-chevron {
     color: var(--text-muted);
-    font-size: var(--size-sm);
-    padding: 6px 2px;
+    transition: transform 0.15s;
 }
-.rm-log-list {
+.rm-step-chevron--open { transform: rotate(180deg); }
+
+/* step inline log */
+.rm-step-log {
+    border-top: 1px solid var(--border);
+    padding: 8px 10px 10px 36px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    background: color-mix(in srgb, var(--bg-input) 60%, transparent);
 }
 
-.rm-log-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 8px 10px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-dim);
-    border-left: 2px solid var(--text-muted);
-    border-radius: var(--radius);
-}
-.rm-log-item--cli { border-left-color: var(--warn); }
-.rm-log-item--ai  { border-left-color: var(--accent); }
-.rm-log-item--ok  { border-left-color: var(--ok); }
-
-.rm-log-icon {
-    margin-top: 2px;
-    color: var(--text-muted);
-    flex-shrink: 0;
-}
-.rm-log-item--cli .rm-log-icon { color: var(--warn);   }
-.rm-log-item--ai  .rm-log-icon { color: var(--accent); }
-.rm-log-item--ok  .rm-log-icon { color: var(--ok);     }
-
-.rm-log-body {
-    flex: 1;
-    min-width: 0;
+/* Q/A block */
+.rm-log-qa {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
-.rm-log-head {
+.rm-log-qa-q,
+.rm-log-qa-a {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-}
-.rm-log-actor {
-    color: var(--text-primary);
-    font-size: var(--size-sm);
-    letter-spacing: var(--tracking);
-    text-transform: uppercase;
-}
-.rm-log-item--cli .rm-log-actor { color: var(--warn);   }
-.rm-log-item--ai  .rm-log-actor { color: var(--accent); }
-.rm-log-item--ok  .rm-log-actor { color: var(--ok);     }
-
-.rm-log-step {
-    color: var(--text-muted);
-    font-size: var(--size-xs);
-    letter-spacing: var(--tracking);
-}
-.rm-log-time {
-    color: var(--text-muted);
-    font-size: var(--size-xs);
-    flex-shrink: 0;
-    margin-left: auto;
-}
-
-.rm-log-q,
-.rm-log-a {
-    display: flex;
-    align-items: flex-start;
     gap: 6px;
     font-size: var(--size-sm);
     line-height: 1.5;
 }
-.rm-log-q-tag,
-.rm-log-a-tag {
-    font-size: var(--size-xs);
-    letter-spacing: var(--tracking);
+.rm-log-qa-icon {
     flex-shrink: 0;
-    width: 12px;
-    text-align: center;
     margin-top: 2px;
     color: var(--text-muted);
 }
-.rm-log-q-text,
-.rm-log-a-text {
+.rm-log-qa-icon--ai { color: var(--accent); }
+.rm-log-qa-text {
     flex: 1;
     color: var(--text-primary);
-    white-space: pre-wrap;
     word-break: break-word;
 }
-.rm-log-a-tag  { color: var(--accent); }
+.rm-log-qa-answer {
+    flex: 1;
+    color: var(--accent);
+    word-break: break-word;
+}
+.rm-log-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    letter-spacing: var(--tracking);
+    padding: 0 5px;
+    border-radius: 4px;
+    line-height: 16px;
+    border: 1px solid;
+}
+.rm-log-badge--ask { color: var(--text-faint); border-color: var(--border-dim); }
 
-.rm-log-reason {
-    color: var(--text-faint);
+.rm-log-time {
+    flex-shrink: 0;
     font-size: var(--size-xs);
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-style: italic;
+    color: var(--text-muted);
+    margin-left: auto;
 }
+
+/* error / done rows */
+.rm-log-err,
+.rm-log-done {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--size-sm);
+    line-height: 1.5;
+}
+.rm-log-err  { color: var(--danger); }
+.rm-log-done { color: var(--ok); }
+.rm-log-done .rm-log-time { color: var(--text-muted); }
 </style>

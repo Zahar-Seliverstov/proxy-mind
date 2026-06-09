@@ -84,6 +84,7 @@
   /* ─── z-index layers ─── */
   --z-panel:     5;
   --z-sidebar:   10;
+  --z-modal:     100;
   --z-toast:     9000;
   --z-scanlines: 9998;
 }

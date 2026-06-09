@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 *.pyo
 .ruff_cache/
+.pytest_cache/
 
 # Node
 frontend/node_modules/
@@ -27,3 +28,4 @@ screenshots/
 backend/logs/
 presentation/
 pres/
+docs/

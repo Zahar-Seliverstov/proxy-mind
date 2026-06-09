@@ -5,6 +5,10 @@ from fastapi.responses import JSONResponse
 
 import log
 from log import logger
+from database.db import SessionLocal, init_db
+from database.seed import seed
+from database.config_db import load_settings
+from services import ai
 from routers.tmux import router as tmux_router
 from routers.fs import router as fs_router
 from routers.ollama import router as ollama_router
@@ -12,10 +16,21 @@ from routers.ai import router as ai_router
 from routers.settings import router as settings_router
 from routers.stats import router as stats_router
 from routers.ws import router as ws_router
+from services import tmux
 
 log.setup()
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+async def _startup():
+    await init_db()
+    async with SessionLocal() as session:
+        await seed(session)
+        await load_settings(session)
+    await ai.load_from_db()
+    tmux.hooks.register()
 
 app.include_router(tmux_router)
 app.include_router(fs_router)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-_LOG_DIR = Path(__file__).parent.parent / "logs"
+_LOG_DIR = Path(__file__).parent / "logs"
 
 _CONSOLE_FMT = (
     "<green>{time:HH:mm:ss}</green> | "

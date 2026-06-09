@@ -1,34 +1,27 @@
 <script setup>
 import { ref, reactive, onMounted, watchEffect } from 'vue'
 import {
-    RefreshCw, Bell, Plus, X, ExternalLink, FolderOpen, Settings,
+    RefreshCw, Bell, Plus, X, ExternalLink, Settings, BookText,
 } from 'lucide-vue-next'
 import PulseDot from './PulseDot.vue'
+import { dirName } from '../utils.js'
 import { useSessionsStore, isPaneAvailable } from '../stores/sessions.js'
 import { useNotificationsStore } from '../stores/notifications.js'
 import * as sessionsApi from '../api/tmux/sessions.js'
-import { fmtPath } from '../utils.js'
-import FilePicker from './FilePicker.vue'
-import { getSettings, updateSettings } from '../api/settings.js'
 import { useResize } from '../composables/useResize.js'
+import NewSessionModal from './NewSessionModal.vue'
+import SettingsModal from './SettingsModal.vue'
+import PromptsModal from './PromptsModal.vue'
 
 const TITLE  = 'ProxyMind'
 const store  = useSessionsStore()
 const nStore = useNotificationsStore()
 
-const newSession = reactive({ name: '', path: '', visible: false })
-const settings   = reactive({
-    ollamaUrl: '',        initialOllamaUrl: '',
-    telegramBotToken: '', initialTelegramBotToken: '',
-    telegramChatId: '',   initialTelegramChatId: '',
-    visible: false, loading: false, saving: false, error: null,
-})
-const expanded  = reactive({})
+const expanded   = reactive({})
 const refreshing = ref(false)
-const showPicker = ref(false)
 const width      = ref(300)
 
-onMounted(() => { store.startPolling() })
+onMounted(() => { store.start() })
 
 watchEffect(() => {
     document.documentElement.style.setProperty('--sidebar-width', width.value + 'px')
@@ -36,75 +29,6 @@ watchEffect(() => {
 
 function toggle(id) {
     expanded[id] = !expanded[id]
-}
-
-async function submitNewSession() {
-    await store.createSession(newSession.name.trim(), newSession.path.trim())
-    newSession.name    = ''
-    newSession.path    = ''
-    newSession.visible = false
-    showPicker.value   = false
-}
-
-function closeNewSession() {
-    newSession.visible = false
-    showPicker.value   = false
-}
-
-async function openSettings() {
-    settings.visible = true
-    settings.error   = null
-    settings.loading = true
-    try {
-        const data = await getSettings()
-        settings.ollamaUrl               = data.ollama_base_url ?? ''
-        settings.initialOllamaUrl        = settings.ollamaUrl
-        settings.telegramBotToken        = data.telegram_bot_token ?? ''
-        settings.initialTelegramBotToken = settings.telegramBotToken
-        settings.telegramChatId          = data.telegram_chat_id ?? ''
-        settings.initialTelegramChatId   = settings.telegramChatId
-    } catch (e) {
-        settings.error = String(e)
-    } finally {
-        settings.loading = false
-    }
-}
-
-function closeSettings() {
-    settings.visible = false
-    settings.error   = null
-}
-
-async function submitSettings() {
-    const ollama = settings.ollamaUrl.trim()
-    const token  = settings.telegramBotToken.trim()
-    const chat   = settings.telegramChatId.trim()
-    if (!ollama) return
-
-    const patch = {}
-    if (ollama !== settings.initialOllamaUrl)         patch.ollama_base_url    = ollama
-    if (token  !== settings.initialTelegramBotToken)  patch.telegram_bot_token = token || null
-    if (chat   !== settings.initialTelegramChatId)    patch.telegram_chat_id   = chat  || null
-
-    if (Object.keys(patch).length === 0) { closeSettings(); return }
-
-    settings.saving = true
-    settings.error  = null
-    try {
-        const data = await updateSettings(patch)
-        settings.ollamaUrl               = data.ollama_base_url
-        settings.initialOllamaUrl        = data.ollama_base_url
-        settings.telegramBotToken        = data.telegram_bot_token ?? ''
-        settings.initialTelegramBotToken = settings.telegramBotToken
-        settings.telegramChatId          = data.telegram_chat_id ?? ''
-        settings.initialTelegramChatId   = settings.telegramChatId
-        nStore.push('success', 'Settings saved')
-        settings.visible = false
-    } catch (e) {
-        settings.error = String(e)
-    } finally {
-        settings.saving = false
-    }
 }
 
 async function manualRefresh() {
@@ -132,6 +56,10 @@ function selectPane(p) {
 }
 
 const startResize = useResize(width, { min: 300, max: 520 })
+
+const newSessionVisible = ref(false)
+const promptsVisible    = ref(false)
+const settingsVisible   = ref(false)
 </script>
 
 <template>
@@ -226,8 +154,7 @@ const startResize = useResize(width, { min: 300, max: 520 })
                                 @click.stop="selectPane(p)"
                             >
                                 <span class="pid">{{ p.id }}</span>
-                                <span class="cmd">{{ p.command }}</span>
-                                <span class="path" :title="fmtPath(p.path)">{{ fmtPath(p.path) }}</span>
+                                <span class="cmd" :title="p.path">{{ dirName(p.path) }}</span>
                                 <button class="act del" @click.stop="store.removePane(p.id)" title="Remove">
                                     <X :size="14" :stroke-width="1.5" />
                                     <span class="act-label">kill</span>
@@ -240,87 +167,26 @@ const startResize = useResize(width, { min: 300, max: 520 })
         </ul>
 
         <div class="bottom">
-            <template v-if="newSession.visible">
-                <form class="new-form" @submit.prevent="submitNewSession">
-                    <input v-model="newSession.name" placeholder="name (auto if empty)" autofocus />
-                    <div v-if="!showPicker" class="path-row">
-                        <input v-model="newSession.path" placeholder="path" />
-                        <button
-                            type="button"
-                            class="btn-pick-dir"
-                            @click="showPicker = true"
-                            title="Browse"
-                        >
-                            <FolderOpen :size="14" :stroke-width="1.5" />
-                        </button>
-                    </div>
-                    <FilePicker
-                        v-if="showPicker"
-                        v-model="newSession.path"
-                        @close="showPicker = false"
-                    />
-                    <div class="new-form-actions">
-                        <button type="button" class="btn btn--ghost" @click="closeNewSession">cancel</button>
-                        <button type="submit" class="btn btn--accent">create</button>
-                    </div>
-                </form>
-            </template>
-            <template v-else-if="settings.visible">
-                <form class="new-form" @submit.prevent="submitSettings">
-                    <label class="form-label" for="settings-ollama-url">ollama base url</label>
-                    <input
-                        id="settings-ollama-url"
-                        v-model="settings.ollamaUrl"
-                        :disabled="settings.loading"
-                        :placeholder="settings.loading ? 'loading…' : 'http://localhost:11434'"
-                        spellcheck="false"
-                        autocomplete="off"
-                        autofocus
-                    />
-                    <label class="form-label" for="settings-tg-token">telegram bot token</label>
-                    <textarea
-                        id="settings-tg-token"
-                        v-model="settings.telegramBotToken"
-                        :disabled="settings.loading"
-                        :placeholder="settings.loading ? 'loading…' : '123456:ABC-DEF…'"
-                        spellcheck="false"
-                        autocomplete="off"
-                        rows="3"
-                    />
-                    <label class="form-label" for="settings-tg-chat">telegram chat id</label>
-                    <input
-                        id="settings-tg-chat"
-                        v-model="settings.telegramChatId"
-                        :disabled="settings.loading"
-                        :placeholder="settings.loading ? 'loading…' : '123456789'"
-                        spellcheck="false"
-                        autocomplete="off"
-                    />
-                    <p v-if="settings.error" class="form-error">{{ settings.error }}</p>
-                    <div class="new-form-actions">
-                        <button type="button" class="btn btn--ghost" @click="closeSettings">cancel</button>
-                        <button
-                            type="submit"
-                            class="btn btn--accent"
-                            :disabled="settings.saving || settings.loading || !settings.ollamaUrl.trim()"
-                        >{{ settings.saving ? 'saving…' : 'save' }}</button>
-                    </div>
-                </form>
-            </template>
-            <template v-else>
-                <button class="hbtn hbtn-new" @click="newSession.visible = true" title="New session">
-                    <Plus :size="16" :stroke-width="1.5" />
-                    <span class="hbtn-label">new session</span>
-                </button>
-                <button class="hbtn" title="Settings" @click="openSettings">
-                    <Settings :size="16" :stroke-width="1.5" />
-                    <span class="hbtn-label">settings</span>
-                </button>
-            </template>
+            <button class="hbtn hbtn-new" @click="newSessionVisible = true" title="New session">
+                <Plus :size="16" :stroke-width="1.5" />
+                <span class="hbtn-label">new session</span>
+            </button>
+            <button class="hbtn" title="Instructions" @click="promptsVisible = true">
+                <BookText :size="16" :stroke-width="1.5" />
+                <span class="hbtn-label">instructions</span>
+            </button>
+            <button class="hbtn" title="Settings" @click="settingsVisible = true">
+                <Settings :size="16" :stroke-width="1.5" />
+                <span class="hbtn-label">settings</span>
+            </button>
         </div>
 
         <div class="resize-handle" @mousedown.prevent="startResize" />
     </aside>
+
+    <NewSessionModal :visible="newSessionVisible" @close="newSessionVisible = false" />
+    <PromptsModal    :visible="promptsVisible"    @close="promptsVisible = false" />
+    <SettingsModal   :visible="settingsVisible"   @close="settingsVisible = false" />
 
 </template>
 
@@ -470,81 +336,6 @@ header {
     font-size: var(--size-base);
 }
 
-.new-form {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px;
-}
-.new-form input,
-.new-form textarea {
-    background: var(--bg-input);
-    border: 1px solid var(--border-dim);
-    border-radius: var(--radius);
-    color: var(--text-bright);
-    font-family: inherit;
-    font-size: var(--size-base);
-    padding: 6px 8px;
-    outline: none;
-    transition: border-color 0.15s;
-    width: 100%;
-}
-.new-form textarea {
-    resize: vertical;
-    min-height: 2rem;
-}
-.new-form input:focus,
-.new-form textarea:focus {
-    border-color: var(--accent-border-focus);
-}
-.new-form input:disabled,
-.new-form textarea:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-.path-row {
-    display: flex;
-    gap: 4px;
-}
-.path-row input {
-    flex: 1;
-}
-.btn-pick-dir {
-    background: none;
-    border: 1px solid var(--border-dim);
-    border-radius: var(--radius);
-    color: var(--text-dim);
-    cursor: pointer;
-    padding: 0 6px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    transition: color 0.1s, border-color 0.1s;
-}
-.btn-pick-dir:hover {
-    color: var(--text-primary);
-    border-color: var(--text-dim);
-}
-.new-form-actions {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-}
-.form-label {
-    color: var(--text-faint);
-    font-size: var(--size-sm);
-    letter-spacing: var(--tracking);
-}
-.form-error {
-    margin: 0;
-    padding: 6px 8px;
-    color: var(--danger);
-    background: var(--danger-bg);
-    border: 1px solid var(--danger);
-    border-radius: var(--radius);
-    font-size: var(--size-sm);
-    word-break: break-word;
-}
 
 .msg {
     padding: 10px 16px;
@@ -670,9 +461,6 @@ li:last-child {
 .pnode.active .pid {
     color: var(--accent);
 }
-.pnode.active .path {
-    color: var(--accent-text-dim);
-}
 .pnode.unavailable {
     cursor: default;
 }
@@ -680,8 +468,7 @@ li:last-child {
     background: transparent;
 }
 .pnode.unavailable .pid,
-.pnode.unavailable .cmd,
-.pnode.unavailable .path {
+.pnode.unavailable .cmd {
     opacity: 0.35;
 }
 .pnode::before {
@@ -717,11 +504,6 @@ li:last-child {
 .cmd {
     color: var(--text-secondary);
     font-size: var(--size-base);
-    flex-shrink: 0;
-}
-.path {
-    color: var(--text-faint);
-    font-size: var(--size-sm);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
