@@ -10,6 +10,30 @@ from database.models import Mode, Prompt
 
 _GARBAGE_RE = re.compile(r"<\|im_|[一-鿿぀-ヿ가-힯]")
 
+# Защита от перегрузки контекста маленькой модели:
+# - терминальный вывод и история уточнений обрезаются до разумного размера
+#   перед тем как попасть в промпт;
+# - генеративные вызовы без response_format ограничены по длине ответа,
+#   иначе модель может генерировать неограниченно долго и упереться в таймаут.
+_MAX_PANE_CHARS = 6000
+_MAX_QUESTION_HISTORY = 6
+# Без лимита response без response_format (plan/optimize) может генерировать
+# неограниченно долго, особенно под grammar-constrained decoding — это и есть
+# основная причина таймаутов на 14B/CPU.
+_PLAN_NUM_PREDICT = 1536
+_OPTIMIZE_NUM_PREDICT = 1024
+
+
+def _truncate_tail(text: str, max_chars: int) -> str:
+    """Обрезает текст до последних max_chars символов (самое свежее важнее)."""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def _normalize_question(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
 # ---------------------------------------------------------------------------
 # In-memory кэш — заполняется из БД при старте через load_from_db()
 # ---------------------------------------------------------------------------
@@ -183,7 +207,7 @@ async def decide_reply(
         "",
         "Terminal output (last lines):",
         "```",
-        pane_text.strip() or "(pane is empty)",
+        _truncate_tail(pane_text.strip(), _MAX_PANE_CHARS) or "(pane is empty)",
         "```",
     ]
     messages = [
@@ -256,7 +280,7 @@ async def analyze(
     parts = [
         "Terminal output (last lines):",
         "```",
-        pane_text.strip() or "(pane is empty)",
+        _truncate_tail(pane_text.strip(), _MAX_PANE_CHARS) or "(pane is empty)",
         "```",
         "",
         f"Current plan step: {current_step}",
@@ -347,9 +371,13 @@ async def get_next_question(
     if mode_hint:
         lines.append(f"Generation mode: {mode_hint}")
     lines.append(f"Original request: {prompt}")
-    if history:
-        lines.append(f"\nClarification history ({len(history)}):")
-        for item in history:
+    # Длинная история раздувает промпт сверх контекста маленькой модели и
+    # заставляет её "забывать" ранние вопросы (см. дедуп-проверку ниже) —
+    # модели достаточно недавних уточнений, чтобы не повторяться.
+    recent_history = history[-_MAX_QUESTION_HISTORY:]
+    if recent_history:
+        lines.append(f"\nClarification history ({len(recent_history)}):")
+        for item in recent_history:
             answer = (item.get("answer") or "").strip()
             lines.append(f"Q: {item['question']}")
             if answer:
@@ -373,7 +401,23 @@ async def get_next_question(
         options={"num_predict": 256, "temperature": 0},
         response_format=_QUESTION_SCHEMA,
     )
-    return {"question": _parse_single_question(response["message"]["content"])}
+    question = _parse_single_question(response["message"]["content"])
+
+    # Маленькая модель при урезанном контексте может "забыть" уже заданные
+    # вопросы и повторить один из них дословно/почти дословно — это привело
+    # бы к бесконечному циклу уточнений на фронте. Если новый вопрос уже
+    # встречался в истории, считаем уточнения завершёнными.
+    if question is not None:
+        asked = {_normalize_question(item["question"]) for item in history}
+        if _normalize_question(question["text"]) in asked:
+            logger.warning(
+                "get_next_question: модель повторила уже заданный вопрос {!r} — "
+                "завершаем уточнения",
+                question["text"],
+            )
+            question = None
+
+    return {"question": question}
 
 
 async def generate(
@@ -394,12 +438,16 @@ async def generate(
         response = await ollama_client.chat(
             model,
             messages,
-            options={"temperature": 0.3},
+            options={"temperature": 0.3, "num_predict": _PLAN_NUM_PREDICT},
             response_format=_PLAN_SCHEMA,
         )
         return {"mode": "plan", "steps": _parse_plan(response["message"]["content"])}
 
-    response = await ollama_client.chat(model, messages, options={"temperature": 0.2})
+    response = await ollama_client.chat(
+        model,
+        messages,
+        options={"temperature": 0.2, "num_predict": _OPTIMIZE_NUM_PREDICT},
+    )
     return {"mode": mode, "result": response["message"]["content"].strip()}
 
 
@@ -466,7 +514,10 @@ async def _translate(text: str, model: str) -> str:
         {"role": "system", "content": _prompts["translate"]},
         {"role": "user", "content": text},
     ]
-    response = await ollama_client.chat(model, messages, options={"temperature": 0})
+    num_predict = min(max(len(text) // 2, 64), _PLAN_NUM_PREDICT)
+    response = await ollama_client.chat(
+        model, messages, options={"temperature": 0, "num_predict": num_predict}
+    )
     return response["message"]["content"].strip()
 
 
@@ -477,10 +528,12 @@ async def _translate_array(items: list[str], model: str) -> list[str]:
         {"role": "system", "content": _prompts["translate_array"]},
         {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
     ]
+    total_chars = sum(len(i) for i in items)
+    num_predict = min(max(total_chars // 2, 128), _PLAN_NUM_PREDICT)
     response = await ollama_client.chat(
         model,
         messages,
-        options={"temperature": 0},
+        options={"temperature": 0, "num_predict": num_predict},
         response_format=_TRANSLATE_ARRAY_SCHEMA,
     )
     raw = response["message"]["content"]

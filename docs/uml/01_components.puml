@@ -16,8 +16,11 @@ package "Браузер (пользователь)" {
     component [FilePicker] as FP
     component [NotificationPanel] as NP
     component [ToastStack] as TS
-    component [TopBar] as TB
-    component [Notification] as NT
+    component [TabBar] as TB
+    component [GridBackground] as GB
+    component [NewSessionModal] as NSM
+    component [SettingsModal] as STM
+    component [PromptsModal] as PRM
   }
 }
 
@@ -33,17 +36,20 @@ package "Backend HTTP Server (FastAPI, порт 3000)" as BE {
     component [ai.py\n(AI-логика)] as SAI
     component [orchestrator.py\n(оркестратор)] as ORC
     component [tmux/\n(libtmux-обёртки)] as STX
+    component [notifications.py] as SNT
   }
   package "Clients" {
     component [ollama/client.py\n(async httpx)] as OCL
+    component [telegram/client.py\n(async httpx)] as TGC
+  }
+  package "Database" {
+    component [db.py\n(SQLAlchemy async)] as DBC
+    component [models.py\n(Prompt, Mode, Setting)] as DBM
+    component [seed.py\n(начальные данные)] as DBS
   }
 }
 
-package "Telegram Bot (FastAPI, порт 3001)" as TGB {
-  component [router.py\nPOST /send] as TGR
-  component [client.py\nhttpx] as TGC
-}
-
+database "proxymind.db\n~/.config/proxymind/" as SQLITE
 database "settings.json\n~/.config/proxymind/" as CFG
 
 node "Ollama (порт 11434)" as OLL
@@ -56,6 +62,8 @@ RAI --> ORC
 RTX --> STX
 RFS --> STX
 RST --> CFG
+RAI --> DBC
+SAI --> DBC
 
 SAI --> OCL
 ORC --> SAI
@@ -65,9 +73,10 @@ OCL --> OLL : REST API
 STX --> TMX : libtmux
 
 BE --> CFG : чтение настроек
-TGB --> CFG : чтение токенов
-TGR --> TGC
-TGC --> TGAPI : POST /sendMessage
+DBC --> SQLITE : SQLite (aiosqlite)
 
-FE ..> TGB : POST /send\n(уведомления)
+ORC --> SNT : уведомление о завершении/ошибке
+SNT --> TGC
+SNT --> CFG : чтение токенов
+TGC --> TGAPI : POST /sendMessage
 @enduml

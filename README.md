@@ -98,14 +98,6 @@ proxy-mind/
 
 ## Настройки
 
-Файл настроек создаётся автоматически: `~/.config/proxymind/settings.json`
+Настройки хранятся в SQLite-базе (`backend/proxymind.db`) и меняются через кнопку **Settings** в интерфейсе — перезапуск не нужен.
 
-```json
-{
-  "ollama_base_url": "http://localhost:11434",
-  "telegram_bot_token": "",
-  "telegram_chat_id": ""
-}
-```
-
-Настройки меняются через кнопку **Settings** в интерфейсе — перезапуск не нужен.
+Доступные параметры: Ollama URL, модель, Telegram bot token и chat ID.
